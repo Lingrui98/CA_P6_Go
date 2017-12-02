@@ -1,5 +1,7 @@
 # CA_P6_Go
 Add support for AXI Bus
+## 第一部分问题
+* 仿真显示，当且仅当arvalid和arready同拍置1时，rdata能读出有效值。这表明，ar通道的采样可能发生在arvalid置1期间，而不是在某一上升沿检测到arvalid&&arready为高电平的瞬间采样。
 
 ## 第二部分注意事项
 * 读请求之前有未完成的inst读请求（地址握手成功但数据未握手），将inst的读数据导入FIFO，直到返回data的读数据。当FIFO中存在有效数据时，IR从FIFO中更新数据，否则从AXI rdata端更新。这样可以将inst的id设为0，data设为1，以作区分。
