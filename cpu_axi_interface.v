@@ -28,7 +28,7 @@ module cpu_axi_interface(
     output  [ 1:0] arlock,     //1'b0
     output  [ 3:0] arcache,    //1'b0
     output  [ 2:0] arprot,     //1'b0
-    output         arvalid,    //To slave
+    output  reg    arvalid,    //To slave
     input          arready,    //From slave
 
     input   [ 3:0] rid,        //Can be ignored
@@ -64,48 +64,65 @@ module cpu_axi_interface(
 
 
 //    assign arid    = 4'd0;
-    assign arlen   = 8'd0;
-    assign arburst = 2'b01; // 2'd0?
-    assign arlock  = 2'd0;
-    assign arcache = 4'd0;
-    assign arprot  = 3'd0;
 
-    assign awid  = 4'd0;
-    assign awlen = 8'd0;
-    assign awburst = 2'b01; // 2'd0?
-    assign awlock  = 2'd0;
-    assign awcache = 4'd0;
-    assign awprot  = 3'd0;
+
+
     
-    assign wid    = 4'd0;
-    assign wlast  = 1'b1;
 
-    reg  do_req_raddr;
-    reg  do_req_raddr_or;
-    reg  r_addr_rcv;
-    wire r_data_back;
 
+//    reg        do_req_raddr;
+    reg        do_req_raddr_or; //Read from data_sram or not
+    reg [ 3:0] do_arid;         //Current arid
+    reg [31:0] do_araddr;       //Current araddr
+    reg [31:0] do_arsize;       //Current arsize
+    reg  r_addr_rcv;            //Read address received by slave and read data haven't returned, one cycle after handshake.
+    reg  r_addr_rcv_r;
+    wire r_data_back;           //Read data returns, goes high as soon as handshake occurs in r_channel
+    wire r_addr_rcv_pos;        //Postive edge of r_addr_rcv
+
+
+    reg  do_req_waddr;          //Doing request of write address, goes down when write address received.
+    reg  do_req_wdata;          //Doing request of write data, goes down when write data received.
+    reg  w_addr_rcv;            //Write address received by slave and write response haven't returned, one cycle after handshake in aw_channel.
+    reg  w_data_rcv;            //Write data received by slave and write response haven't returned, one cycle after handshake in w_channel.
+    wire w_data_back;           //Write response returns, goes high as soon as handshake occurs in b_channel.
+
+    reg [31:0] do_wdata_r;      //Current write data.  
+    reg [31:0] do_waddr_r;      //Current write address.
+    reg [ 1:0] do_dsize_r;      //Current write size.
+
+    reg [ 1:0] data_in_ready;   //Indicates whether aw_channel and w_channel is ready, the lower bit standing for waddr and the higher bit standing for wdata
+    reg [ 1:0] data_in_ready_r; //Used for data_in_ready_pos
+    wire data_in_ready_pos;     //Positive edge of data_in_ready, goes high in the cycle when data_in_ready achieves 2'b11
+
+    reg  w_addr_rcv_r;
+    reg  w_data_rcv_r;
+    wire w_addr_rcv_pos;        //Positive edge of w_addr_rcv
+    wire w_data_rcv_pos;        //Positive edge of w_data_rcv
+
+
+    assign inst_addr_ok = arvalid&&arready && !do_req_raddr_or;
+    assign data_addr_ok  = arvalid&&arready && do_req_raddr_or || data_in_ready==2'b01 && wvalid&&wready && do_waddr_r!=32'hxxxxxxxx || data_in_ready==2'b10 && awvalid&&awready && do_waddr_r!=32'hxxxxxxxx;
 
     always @ (posedge clk) begin
+//        do_req_raddr    <= !resetn                                         ? 1'b0 :
+//                           (inst_req||data_req&&!data_wr) && !do_req_raddr ? 1'b1 :
+//                           r_addr_rcv_pos                                  ? 1'b0 : do_req_raddr;
+        do_req_raddr_or <= !resetn          ? 1'b0 :
+                           arready&&arvalid ? (data_req&&!data_wr) : do_req_raddr_or;
+        do_arid         <= !resetn        ? 4'd0 :
+                           r_addr_rcv_pos ? (do_req_raddr_or ? 4'd1 : 4'd0) : do_arid;              
+        do_araddr       <= !resetn        ? 32'd0 :
+                           r_addr_rcv_pos ? (do_req_raddr_or ? data_addr : inst_addr) : do_araddr;
+        do_arsize       <= !resetn        ? 3'd0 :
+                           r_addr_rcv_pos ? (do_req_raddr_or ? data_size : inst_size) : do_arsize;
+        arvalid         <= !resetn                                        ? 1'b0 :
+                           r_addr_rcv_pos&&(inst_req||data_req&&!data_wr) ? 1'b1 :
+                           arready                                        ? 1'b0 : 1'b1;
 
-        do_req_raddr    <= !resetn                                         ? 1'b0 :
-                           (inst_req||data_req&&!data_wr) && !do_req_raddr ? 1'b1 :
-                           arvalid&&arready                                ? 1'b0 : do_req_raddr;
-        do_req_raddr_or <= !resetn        ? 1'b0 :
-                           !do_req_raddr  ? (data_req&&!data_wr) : do_req_raddr_or;
     end
-    assign arid    = do_req_raddr&&!do_req_raddr_or ? 4'd0 :
-                     do_req_raddr&& do_req_raddr_or ? 4'd1 : 4'hx;
-    assign arvalid = do_req_raddr&&!r_addr_rcv;
-    assign araddr  = do_req_raddr&& do_req_raddr_or ? data_addr :
-                     do_req_raddr&&!do_req_raddr_or ? inst_addr : 32'hxxxxxxxx;
-    assign arsize  = do_req_raddr&& do_req_raddr_or ? data_size :
-                     do_req_raddr&&!do_req_raddr_or ? inst_size : 3'hx;
 
-    assign inst_addr_ok = arvalid&&arready && do_req_raddr&&!do_req_raddr_or;
 
-    wire r_addr_rcv_pos;
-    assign r_data_back = r_addr_rcv && (rvalid && rready);
     
     always @(posedge clk) begin
         r_addr_rcv <= !resetn          ? 1'b0 :
@@ -116,22 +133,24 @@ module cpu_axi_interface(
                       r_data_back      ? 1'b0 : rready;
     end
 
-    reg  do_req_waddr;
-    reg  do_req_wdata;
-    reg  w_addr_rcv;
-    reg  w_data_rcv;
-    wire w_data_back;
 
-    reg [31:0] do_wdata_r;
-    reg [31:0] do_waddr_r;
-    reg [ 1:0] do_dsize_r;
+    assign r_data_back = r_addr_rcv && (rvalid && rready);
 
-//    reg [31:0] do_waddr_r [0:15];
-    reg  [1:0] data_in_ready, data_in_ready_r;
-    wire data_in_ready_pos;
 
-    reg  w_addr_rcv_r,   w_data_rcv_r;
-    wire w_addr_rcv_pos, w_data_rcv_pos;
+
+
+//    reg [32:0] do_waddr_r [0:3];
+//    reg [ 3:0] do_dsize_r [0:3];
+
+
+
+
+//    wire [2:0] write_id_n;
+//Select awid, wid
+//    assign write_id_n = do_waddr_r[0] == 32'hxxxxxxxx ? 3'd0 :
+//                        do_waddr_r[1] == 32'hxxxxxxxx ? 3'd1 :
+//                        do_waddr_r[2] == 32'hxxxxxxxx ? 3'd2 :
+//                        do_waddr_r[3] == 32'hxxxxxxxx ? 3'd3 : 3'd4;
 
 //    wire data_wdata_ready;
 //    wire data_waddr_ready;
@@ -143,30 +162,23 @@ module cpu_axi_interface(
         do_req_wdata     <= !resetn                            ? 1'b0 :
                             data_req&&data_wr && !do_req_wdata ? 1'b1 :
                             wvalid&&wready                     ? 1'b0 : do_req_wdata;
-        do_wdata_r       <= data_addr_ok ? data_wdata : do_wdata_r;
-        do_waddr_r       <= data_addr_ok ? data_addr  : do_waddr_r;
-        do_dsize_r       <= data_addr_ok ? data_size  : do_dsize_r;
-        data_in_ready    <= !resetn                        ? 2'd0 :
-                            w_addr_rcv_pos&&w_data_rcv_pos ? 2'd2 :
-                            w_addr_rcv_pos                 ? data_in_ready + 1'd1 :
-                            w_data_rcv_pos                 ? data_in_ready + 1'd1 :
-                            w_data_back                    ? 2'd0 : data_in_ready;
+        do_wdata_r       <= data_in_ready_pos ? data_wdata : do_wdata_r;
+        do_waddr_r       <= data_in_ready_pos ? data_addr  : do_waddr_r;
+        do_dsize_r       <= data_in_ready_pos ? data_size  : do_dsize_r;
+        data_in_ready    <= !resetn                        ? 2'b00 :
+                            w_addr_rcv_pos&&w_data_rcv_pos ? 2'b11 :
+                            w_addr_rcv_pos                 ? data_in_ready + 2'b01 :
+                            w_data_rcv_pos                 ? data_in_ready + 2'b10 :
+                            w_data_back                    ? 2'b00 : data_in_ready;
+//       if (write_id_n==3'd0) begin
+//            do_waddr_r[0]
+ //       end
     end
     
-    assign data_addr_ok  = arvalid&&arready && do_req_raddr&& do_req_raddr_or || data_in_ready_pos;
 //    assign data_wdata_ready = wvalid &&wready  && do_req_wdata;
 //    assign data_waddr_ready = awvalid&&awready && do_req_waddr;
-
-    assign awvalid = do_req_waddr && !w_addr_rcv;
-    assign awaddr  = do_req_waddr ? do_waddr_r : 32'hxxxxxxxx;
-    assign awsize  = do_req_waddr ? do_dsize_r : 3'hx;
-
-    assign wdata = do_wdata_r;
-    assign wstrb = do_dsize_r==2'd0 ? 4'b0001<<do_waddr_r[1:0] :
-                   do_dsize_r==2'd1 ? 4'b0011<<do_waddr_r[1:0] : 4'b1111;
-    assign wvalid = !w_data_rcv; // problems here
-
-    assign w_data_back = (w_addr_rcv&&w_data_rcv) && (bvalid && bready);
+//    assign awid = write_id_n;
+//    assign wid  = write_id_n;
 
     always @ (posedge clk) begin
         w_addr_rcv <= !resetn            ? 1'b0 :             //slave receives waddr and haven't received wdata.
@@ -180,13 +192,53 @@ module cpu_axi_interface(
                       w_data_back            ? 1'b0 : bready;
     end
 
+    assign w_data_back = (w_addr_rcv&&w_data_rcv) && (bvalid && bready);
+
+
+
+/////////////////////////////////////////////////////////////////////
+//ar_channel
+    assign arid   = do_arid;
+    assign araddr = do_araddr;
+    assign arsize = do_arsize;
+
+    assign arlen   = 8'd0;
+    assign arburst = 2'b01; // 2'd0?
+    assign arlock  = 2'd0;
+    assign arcache = 4'd0;
+    assign arprot  = 3'd0;
+
+/////////////////////////////////////////////////////////////////////
+//aw_channel
+    assign awvalid = do_req_waddr && !w_addr_rcv; //&& write_id_n!=3'd4;
+    assign awaddr  = do_req_waddr ? do_waddr_r : 32'hxxxxxxxx;
+    assign awsize  = do_req_waddr ? do_dsize_r : 3'hx;
+
+    assign awid  = 4'd0;
+    assign awlen = 8'd0;
+    assign awburst = 2'b01; // 2'd0?
+    assign awlock  = 2'd0;
+    assign awcache = 4'd0;
+    assign awprot  = 3'd0;
+
+/////////////////////////////////////////////////////////////////////
+//w_channel
+    assign wdata = do_wdata_r;
+    assign wstrb = do_dsize_r==2'd0 ? 4'b0001<<do_waddr_r[1:0] :
+                   do_dsize_r==2'd1 ? 4'b0011<<do_waddr_r[1:0] : 4'b1111;
+    assign wvalid = do_req_wdata && !w_data_rcv;// && write_id_n!=3'd4; // problems here
+    assign wid    = 4'd0;
+    assign wlast  = 1'b1;
+
+
+
     assign inst_data_ok =  r_data_back && rid==4'd0;                 //Problems here
     assign data_data_ok = (r_data_back && rid==4'd1) || w_data_back; //Problems here
-    assign inst_rdata = rdata;
-    assign data_rdata = rdata;
+    assign inst_rdata = rid==4'd0 ? rdata : 32'hxxxxxxxx;
+    assign data_rdata = rid==4'd1 ? rdata : 32'hxxxxxxxx;
 
-
-    reg r_addr_rcv_r;
+/////////////////////////////////////////////////////////////////////
+//All posedges
     always @ (posedge clk) begin
         r_addr_rcv_r    <= !resetn ? 1'b0 : r_addr_rcv;
         data_in_ready_r <= !resetn ? 2'd0 : data_in_ready;
@@ -195,8 +247,10 @@ module cpu_axi_interface(
     end
 
     assign r_addr_rcv_pos    = r_addr_rcv          & ~r_addr_rcv_r;
-    assign data_in_ready_pos = data_in_ready==2'd2 & data_in_ready_r!=2'd2;
+    assign data_in_ready_pos = data_in_ready==2'd3 & data_in_ready_r!=2'd3;
     assign w_addr_rcv_pos    = w_addr_rcv          & ~w_addr_rcv_r;
     assign w_data_rcv_pos    = w_data_rcv          & ~w_data_rcv_r;
+
+
 endmodule
 
