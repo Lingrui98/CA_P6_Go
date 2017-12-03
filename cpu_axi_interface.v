@@ -46,14 +46,14 @@ module cpu_axi_interface(
     output  [ 1:0] awlock,     //1'b0
     output  [ 3:0] awcache,    //1'b0
     output  [ 2:0] awprot,     //1'b0
-    output         awvalid,    //To slave
+    output  reg    awvalid,    //To slave
     input          awready,    //From slave
 
     output  [ 3:0] wid,        //1'b0
     output  [31:0] wdata,
     output  [ 3:0] wstrb,
     output         wlast,      //1'b1
-    output         wvalid,     //To slave
+    output  reg    wvalid,     //To slave
     input          wready,     //From slave
 
     input   [ 3:0] bid,        //Can be ignored
@@ -88,7 +88,7 @@ module cpu_axi_interface(
     wire w_data_back;           //Write response returns, goes high as soon as handshake occurs in b_channel.
 
     reg [31:0] do_wdata_r;      //Current write data.  
-    reg [31:0] do_waddr_r;      //Current write address.
+    reg [32:0] do_waddr_r;      //Current write address, highest bit indicates the validity of the address
     reg [ 1:0] do_dsize_r;      //Current write size.
 
     reg [ 1:0] data_in_ready;   //Indicates whether aw_channel and w_channel is ready, the lower bit standing for waddr and the higher bit standing for wdata
@@ -101,8 +101,10 @@ module cpu_axi_interface(
     wire w_data_rcv_pos;        //Positive edge of w_data_rcv
 
 
-    assign inst_addr_ok = arvalid&&arready && !do_req_raddr_or;
-    assign data_addr_ok  = arvalid&&arready && do_req_raddr_or || data_in_ready==2'b01 && wvalid&&wready && do_waddr_r!=32'hxxxxxxxx || data_in_ready==2'b10 && awvalid&&awready && do_waddr_r!=32'hxxxxxxxx;
+    assign inst_addr_ok  = arvalid&&arready && !do_req_raddr_or;
+    assign data_addr_ok  = arvalid&&arready &&  do_req_raddr_or ||
+                           data_in_ready==2'b01 && wvalid&&wready   && do_waddr_r[32] ||
+                           data_in_ready==2'b10 && awvalid&&awready && do_waddr_r[32] ;
 
     always @ (posedge clk) begin
 //        do_req_raddr    <= !resetn                                         ? 1'b0 :
@@ -162,14 +164,22 @@ module cpu_axi_interface(
         do_req_wdata     <= !resetn                            ? 1'b0 :
                             data_req&&data_wr && !do_req_wdata ? 1'b1 :
                             wvalid&&wready                     ? 1'b0 : do_req_wdata;
+        do_waddr_r       <= !resetn           ? 33'd0 :
+                            data_in_ready_pos ? {1'b1,data_addr} : do_waddr_r;
         do_wdata_r       <= data_in_ready_pos ? data_wdata : do_wdata_r;
-        do_waddr_r       <= data_in_ready_pos ? data_addr  : do_waddr_r;
         do_dsize_r       <= data_in_ready_pos ? data_size  : do_dsize_r;
         data_in_ready    <= !resetn                        ? 2'b00 :
                             w_addr_rcv_pos&&w_data_rcv_pos ? 2'b11 :
                             w_addr_rcv_pos                 ? data_in_ready + 2'b01 :
                             w_data_rcv_pos                 ? data_in_ready + 2'b10 :
                             w_data_back                    ? 2'b00 : data_in_ready;
+        
+        awvalid          <= !resetn                                ? 1'b0 :
+                            data_in_ready_pos&&(data_req&&data_wr) ? 1'b1 :
+                            awready                                ? 1'b0 : 1'b1;
+        wvalid           <= !resetn                                ? 1'b0 :
+                            data_in_ready_pos&&(data_req&&data_wr) ? 1'b1 :
+                            wready                                 ? 1'b0 : 1'b1;
 //       if (write_id_n==3'd0) begin
 //            do_waddr_r[0]
  //       end
@@ -210,9 +220,9 @@ module cpu_axi_interface(
 
 /////////////////////////////////////////////////////////////////////
 //aw_channel
-    assign awvalid = do_req_waddr && !w_addr_rcv; //&& write_id_n!=3'd4;
-    assign awaddr  = do_req_waddr ? do_waddr_r : 32'hxxxxxxxx;
-    assign awsize  = do_req_waddr ? do_dsize_r : 3'hx;
+//    assign awvalid = do_req_waddr && !w_addr_rcv; //&& write_id_n!=3'd4;
+    assign awaddr  = do_req_waddr ? do_waddr_r[31:0] : 32'hxxxxxxxx;
+    assign awsize  = do_req_waddr ? do_dsize_r       : 3'hx;
 
     assign awid  = 4'd0;
     assign awlen = 8'd0;
@@ -226,7 +236,7 @@ module cpu_axi_interface(
     assign wdata = do_wdata_r;
     assign wstrb = do_dsize_r==2'd0 ? 4'b0001<<do_waddr_r[1:0] :
                    do_dsize_r==2'd1 ? 4'b0011<<do_waddr_r[1:0] : 4'b1111;
-    assign wvalid = do_req_wdata && !w_data_rcv;// && write_id_n!=3'd4; // problems here
+//    assign wvalid = do_req_wdata && !w_data_rcv;// && write_id_n!=3'd4; // problems here
     assign wid    = 4'd0;
     assign wlast  = 1'b1;
 
@@ -251,6 +261,12 @@ module cpu_axi_interface(
     assign w_addr_rcv_pos    = w_addr_rcv          & ~w_addr_rcv_r;
     assign w_data_rcv_pos    = w_data_rcv          & ~w_data_rcv_r;
 
-
+integer wr_cnt;
+always @ (posedge clk) begin
+    if(!resetn) wr_cnt <= 'd0;
+    else if(bvalid&&bready)
+        wr_cnt <= wr_cnt + 'd1;
+end
+ 
 endmodule
 
