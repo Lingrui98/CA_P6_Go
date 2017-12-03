@@ -82,7 +82,11 @@ module cpu_axi_interface(
 
 
     reg  do_req_waddr;          //Doing request of write address, goes down when write address received.
+    reg  do_req_waddr_r;
+    wire do_req_waddr_pos;
     reg  do_req_wdata;          //Doing request of write data, goes down when write data received.
+    reg  do_req_wdata_r;
+    wire do_req_wdata_pos;
     reg  w_addr_rcv;            //Write address received by slave and write response haven't returned, one cycle after handshake in aw_channel.
     reg  w_data_rcv;            //Write data received by slave and write response haven't returned, one cycle after handshake in w_channel.
     wire w_data_back;           //Write response returns, goes high as soon as handshake occurs in b_channel.
@@ -160,10 +164,10 @@ module cpu_axi_interface(
     always @ (posedge clk) begin
         do_req_waddr     <= !resetn                            ? 1'b0 : 
                             data_req&&data_wr && !do_req_waddr ? 1'b1 :
-                            awvalid&&awready                   ? 1'b0 : do_req_waddr;
+                            w_data_back                        ? 1'b0 : do_req_waddr;
         do_req_wdata     <= !resetn                            ? 1'b0 :
                             data_req&&data_wr && !do_req_wdata ? 1'b1 :
-                            wvalid&&wready                     ? 1'b0 : do_req_wdata;
+                            w_data_back                        ? 1'b0 : do_req_wdata;
         do_waddr_r       <= !resetn           ? 33'd0 :
                             data_in_ready_pos ? {1'b1,data_addr} : do_waddr_r;
         do_wdata_r       <= data_in_ready_pos ? data_wdata : do_wdata_r;
@@ -175,11 +179,11 @@ module cpu_axi_interface(
                             w_data_back                    ? 2'b00 : data_in_ready;
         
         awvalid          <= !resetn                                ? 1'b0 :
-                            data_in_ready_pos&&(data_req&&data_wr) ? 1'b1 :
-                            awready                                ? 1'b0 : 1'b1;
+                            do_req_waddr_pos                       ? 1'b1 :
+                            awready                                ? 1'b0 : awvalid;
         wvalid           <= !resetn                                ? 1'b0 :
-                            data_in_ready_pos&&(data_req&&data_wr) ? 1'b1 :
-                            wready                                 ? 1'b0 : 1'b1;
+                            do_req_wdata_pos                       ? 1'b1 :
+                            wready                                 ? 1'b0 : wvalid;
 //       if (write_id_n==3'd0) begin
 //            do_waddr_r[0]
  //       end
@@ -254,12 +258,16 @@ module cpu_axi_interface(
         data_in_ready_r <= !resetn ? 2'd0 : data_in_ready;
         w_addr_rcv_r    <= !resetn ? 1'b0 : w_addr_rcv;
         w_data_rcv_r    <= !resetn ? 1'b0 : w_data_rcv;
+        do_req_waddr_r  <= !resetn ? 1'b0 : do_req_waddr;
+        do_req_wdata_r  <= !resetn ? 1'b0 : do_req_wdata;
     end
 
     assign r_addr_rcv_pos    = r_addr_rcv          & ~r_addr_rcv_r;
     assign data_in_ready_pos = data_in_ready==2'd3 & data_in_ready_r!=2'd3;
     assign w_addr_rcv_pos    = w_addr_rcv          & ~w_addr_rcv_r;
     assign w_data_rcv_pos    = w_data_rcv          & ~w_data_rcv_r;
+    assign do_req_waddr_pos  = do_req_waddr        & ~do_req_waddr_r;
+    assign do_req_wdata_pos  = do_req_wdata        & ~do_req_wdata_r;
 
 integer wr_cnt;
 always @ (posedge clk) begin
