@@ -5,6 +5,8 @@ Add support for AXI Bus
 * virtual cpu中data端传出写通道数据靠data_addr_cnt计数，但该变量每当data_addr_ok传入增1，此时data_wdata不一定就绪，故实际上应该是waddr和wdata都就绪以后才传入cpudata_addr_ok。此处坑甚大。
 ### 目前interface的问题
 * data_addr_ok由data的读写通道准备完成信号进行或运算，但造成了一个问题：读操作未获得响应时，之前的写操作获得了响应，传出了data_addr_ok，将cnt变为错误的值。
+#### 第一阶段data通道的测试过程梳理
+  首先，第一个测试点data发出写操作，在返回addr_ok后，data通道发出下一个req。注意data通道的req变更是由data_addr_ok触发的。这样存在问题。例如，按我们的读写通道分离逻辑，data发出的读请求还没有返回data_data_ok之前，可能发出下一个写请求。而如果写请求在读请求之前完成，则会触发对应读请求cnt的测试点。而这个data_back是写响应信号，rdata并没有返回值。这样会造成测试错误。
 
 ## 第二部分注意事项
 * 读请求之前有未完成的inst读请求（地址握手成功但数据未握手），将inst的读数据导入FIFO，直到返回data的读数据。当FIFO中存在有效数据时，IR从FIFO中更新数据，否则从AXI rdata端更新。这样可以将inst的id设为0，data设为1，以作区分。
