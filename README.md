@@ -119,19 +119,19 @@ Add support for AXI Bus
       
       //与拉高写请求的判断逻辑相同，表项更新与写请求发出同时进行，有效位置1
       if (!data_w_req&&memwrite&&write_id_n!=3'd4) begin
-         if (bid==4'd0) begin
+         if (write_id_n==4'd0) begin
             do_waddr_r[0] <= {1'b1,data_waddr};
             do_dsize_r[0] <= data_wsize;
          end
-         if (bid==4'd1) begin
+         if (write_id_n==4'd1) begin
             do_waddr_r[1] <= {1'b1,data_waddr};
             do_dsize_r[1] <= data_wsize;
          end
-         if (bid==4'd2) begin
+         if (write_id_n==4'd2) begin
             do_waddr_r[2] <= {1'b1,data_waddr};
             do_dsize_r[2] <= data_wsize;
          end
-         if (bid==4'd3) begin
+         if (write_id_n==4'd3) begin
             do_waddr_r[3] <= {1'b1,data_waddr};
             do_dsize_r[3] <= data_wsize;
          end
