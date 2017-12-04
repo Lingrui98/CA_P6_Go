@@ -105,6 +105,32 @@ Add support for AXI Bus
                     data_in_ready ? 1'b0                         : data_w_req;
       data_r_req <= !data_r_req ? memread && pot_hazard :
                     r_data_back ? 1'b0                  : data_r_req; 
+                    
+      if (bvalid&&bready) begin
+         if (bid==4'd0) do_waddr_r[0][32] <= 1'b0;
+         if (bid==4'd1) do_waddr_r[1][32] <= 1'b0;
+         if (bid==4'd2) do_waddr_r[2][32] <= 1'b0;
+         if (bid==4'd3) do_waddr_r[3][32] <= 1'b0;
+      end
+      
+      if (!data_w_req&&memwrite&&write_id_n!=3'd4) begin
+         if (bid==4'd0) begin
+            do_waddr_r[0] <= {1'b1,data_waddr};
+            do_dsize_r[0] <= data_wsize;
+         end
+         if (bid==4'd1) begin
+            do_waddr_r[1] <= {1'b1,data_waddr};
+            do_dsize_r[1] <= data_wsize;
+         end
+         if (bid==4'd2) begin
+            do_waddr_r[2] <= {1'b1,data_waddr};
+            do_dsize_r[2] <= data_wsize;
+         end
+         if (bid==4'd3) begin
+            do_waddr_r[3] <= {1'b1,data_waddr};
+            do_dsize_r[3] <= data_wsize;
+         end
+      end
 ```
       
    
