@@ -95,17 +95,21 @@ Add support for AXI Bus
       reg [32:0] do_waddr_r [0:3]; //最高位为有效位
       reg [ 3:0] do_dsize_r [0:3]; //用于计算是否能发出读data的request。
       
-      wire [2:0] write_id_n;
+      wire [2:0] write_id_n;       //下个写操作的id号，若表满则为4，否则为最低有效值
       assign write_id_n = do_waddr_r[0][32]==1'b0 ? 3'd0 :
                           do_waddr_r[1][32]==1'b0 ? 3'd1 :
                           do_waddr_r[2][32]==1'b0 ? 3'd2 :
-                          do_waddr_r[3][32]==1'b0 ? 3'd3 : 3'd4;
+                          do_waddr_r[3][32]==1'b0 ? 3'd3 : 3'd4; 
       
+      //若表满，则不能发写请求
       data_w_req <= !data_w_req   ? memwrite && write_id_n!=3'd4 :
                     data_in_ready ? 1'b0                         : data_w_req;
+      
+      //有潜在的相关可能，则不能发读请求
       data_r_req <= !data_r_req ? memread && pot_hazard :
                     r_data_back ? 1'b0                  : data_r_req; 
-                    
+      
+      //写响应返回，则拉低对应表项的有效位
       if (bvalid&&bready) begin
          if (bid==4'd0) do_waddr_r[0][32] <= 1'b0;
          if (bid==4'd1) do_waddr_r[1][32] <= 1'b0;
@@ -113,6 +117,7 @@ Add support for AXI Bus
          if (bid==4'd3) do_waddr_r[3][32] <= 1'b0;
       end
       
+      //与拉高写请求的判断逻辑相同，表项更新与写请求发出同时进行，有效位置1
       if (!data_w_req&&memwrite&&write_id_n!=3'd4) begin
          if (bid==4'd0) begin
             do_waddr_r[0] <= {1'b1,data_waddr};
