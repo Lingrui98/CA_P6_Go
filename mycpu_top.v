@@ -8,83 +8,108 @@
 `timescale 10ns / 1ns
 
 module mycpu_top(
-    input  wire        clk,
-    input  wire        resetn, 
-    input  wire [ 5:0] int_i,
+    input         clk,
+    input         resetn, 
+    input  [ 5:0] int_i,
     // read address channel
-    output wire [ 3:0] cpu_arid,         // M->S 
-    output wire [31:0] cpu_araddr,       // M->S 
-    output wire [ 7:0] cpu_arlen,        // M->S 
-    output wire [ 2:0] cpu_arsize,       // M->S 
-    output wire [ 1:0] cpu_arburst,      // M->S 
-    output wire [ 1:0] cpu_arlock,       // M->S 
-    output wire [ 3:0] cpu_arcache,      // M->S 
-    output wire [ 2:0] cpu_arprot,       // M->S 
-    output wire        cpu_arvalid,      // M->S 
-    input  wire        cpu_arready,      // S->M 
+    output [ 3:0] cpu_arid,         // M->S 
+    output [31:0] cpu_araddr,       // M->S 
+    output [ 7:0] cpu_arlen,        // M->S 
+    output [ 2:0] cpu_arsize,       // M->S 
+    output [ 1:0] cpu_arburst,      // M->S 
+    output [ 1:0] cpu_arlock,       // M->S 
+    output [ 3:0] cpu_arcache,      // M->S 
+    output [ 2:0] cpu_arprot,       // M->S 
+    output        cpu_arvalid,      // M->S 
+    input         cpu_arready,      // S->M 
     // read data channel
-    input  wire [ 3:0] cpu_rid,          // S->M 
-    input  wire [31:0] cpu_rdata,        // S->M 
-    input  wire [ 1:0] cpu_rresp,        // S->M 
-    input  wire        cpu_rlast,        // S->M 
-    input  wire        cpu_rvalid,       // S->M 
-    output wire        cpu_rready,       // M->S
+    input  [ 3:0] cpu_rid,          // S->M 
+    input  [31:0] cpu_rdata,        // S->M 
+    input  [ 1:0] cpu_rresp,        // S->M 
+    input         cpu_rlast,        // S->M 
+    input         cpu_rvalid,       // S->M 
+    output        cpu_rready,       // M->S
     // write address channel 
-    output wire [ 3:0] cpu_awid,         // M->S
-    output wire [31:0] cpu_awaddr,       // M->S
-    output wire [ 7:0] cpu_awlen,        // M->S
-    output wire [ 2:0] cpu_awsize,       // M->S
-    output wire [ 1:0] cpu_awburst,      // M->S
-    output wire [ 1:0] cpu_awlock,       // M->S
-    output wire [ 3:0] cpu_awcache,      // M->S
-    output wire [ 2:0] cpu_awprot,       // M->S
-    output wire        cpu_awvalid,      // M->S
-    input  wire        cpu_awready,      // S->M
+    output [ 3:0] cpu_awid,         // M->S
+    output [31:0] cpu_awaddr,       // M->S
+    output [ 7:0] cpu_awlen,        // M->S
+    output [ 2:0] cpu_awsize,       // M->S
+    output [ 1:0] cpu_awburst,      // M->S
+    output [ 1:0] cpu_awlock,       // M->S
+    output [ 3:0] cpu_awcache,      // M->S
+    output [ 2:0] cpu_awprot,       // M->S
+    output        cpu_awvalid,      // M->S
+    input         cpu_awready,      // S->M
     // write data channel
-    output wire [ 3:0] cpu_wid,          // M->S
-    output wire [31:0] cpu_wdata,        // M->S
-    output wire [ 3:0] cpu_wstrb,        // M->S
-    output wire        cpu_wlast,        // M->S
-    output wire        cpu_wvalid,       // M->S
-    input  wire        cpu_wready,       // S->M
+    output [ 3:0] cpu_wid,          // M->S
+    output [31:0] cpu_wdata,        // M->S
+    output [ 3:0] cpu_wstrb,        // M->S
+    output        cpu_wlast,        // M->S
+    output        cpu_wvalid,       // M->S
+    input         cpu_wready,       // S->M
     // write response channel
-    input  wire [ 3:0] cpu_bid,          // S->M 
-    input  wire [ 1:0] cpu_bresp,        // S->M 
-    input  wire        cpu_bvalid,       // S->M 
-    output wire        cpu_bready        // M->S 
+    input  [ 3:0] cpu_bid,          // S->M 
+    input  [ 1:0] cpu_bresp,        // S->M 
+    input         cpu_bvalid,       // S->M 
+    output        cpu_bready        // M->S 
 
     // debug signals
   `ifdef SIMU_DEBUG
-   ,output wire [31:0] debug_wb_pc,
-    output wire [ 3:0] debug_wb_rf_wen,
-    output wire [ 4:0] debug_wb_rf_wnum,
-    output wire [31:0] debug_wb_rf_wdata
+   ,output [31:0] debug_wb_pc,
+    output [ 3:0] debug_wb_rf_wen,
+    output [ 4:0] debug_wb_rf_wnum,
+    output [31:0] debug_wb_rf_wdata
   `endif    
   );
 
+wire        inst_req;
+wire [ 1:0] inst_size;
+wire [31:0] inst_addr;
+wire [31:0] inst_rdata;
+wire        inst_addr_ok;
+wire        inst_data_ok;
+
+wire        data_req;
+wire        data_wr;
+
+wire [ 1:0] data_rsize;
+wire [31:0] data_raddr;
+wire [31:0] data_rdata;
+wire        data_raddr_ok;
+wire        data_rdata_ok;
+
+wire [ 1:0] data_wsize;
+wire [31:0] data_waddr;
+wire [31:0] data_wdata;
+wire        data_waddr_ok;
+wire        data_wdata_ok;
 
 mycpu cpu(
     .clk                 ( clk               ),
     .resetn              ( resetn            ),
     .int_i               ( int_i             ),
 
-    .inst_req            ( inst_req          ),
-    .inst_wr             ( inst_wr           ),
-    .inst_size           ( inst_size         ),
-    .inst_addr           ( inst_addr         ),
-    .inst_wdata          ( inst_wdata        ),
-    .inst_rdata          ( inst_rdata        ),
-    .inst_addr_ok        ( inst_addr_ok      ),
-    .inst_data_ok        ( inst_data_ok      ),
+    .inst_req            ( inst_req         ),   
+    .inst_size           ( inst_size        ),    
+    .inst_addr           ( inst_addr        ),    
+    .inst_rdata          ( inst_rdata       ),     
+    .inst_addr_ok        ( inst_addr_ok     ),       
+    .inst_data_ok        ( inst_data_ok     ),       
+                                                                    
+    .data_req            ( data_req         ),   
+    .data_wr             ( data_wr          ),  
 
-    .data_req            ( data_req          ),
-    .data_wr             ( data_wr           ),
-    .data_size           ( data_size         ),
-    .data_addr           ( data_addr         ),
-    .data_wdata          ( data_wdata        ),
-    .data_rdata          ( data_rdata        ),
-    .data_addr_ok        ( data_addr_ok      ),
-    .data_data_ok        ( data_data_ok      ),
+    .data_rsize          ( data_rsize       ),    
+    .data_raddr          ( data_raddr       ),    
+    .data_rdata          ( data_rdata       ),     
+    .data_raddr_ok       ( data_raddr_ok    ),       
+    .data_rdata_ok       ( data_rdata_ok    ),
+
+    .data_wsize          ( data_wsize       ),    
+    .data_waddr          ( data_waddr       ),    
+    .data_wdata          ( data_wdata       ),     
+    .data_waddr_ok       ( data_waddr_ok    ),    //write addr and data ok   
+    .data_wdata_ok       ( data_wdata_ok    ),    //write response
 
     //debug
     .debug_wb_pc         ( debug_wb_pc       ),
