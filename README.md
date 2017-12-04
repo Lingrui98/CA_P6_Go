@@ -45,7 +45,7 @@ Add support for AXI Bus
 * 如果上升沿收到来自mem stage的读请求，优先处理data_req。直接送入ar通道，arid设1。当且仅当这次ar通道握手成功时，将一个标志位do_data_req置1。
 ``` Verilog
 ///////////////////////////////////////////////////
-//AXI ar&r channel
+//logic for AXI ar&r channel
       assign rready = decode_allowin || data_req;      
       if (!IR_buffer[32]) begin
          if (rready&&rvalid) begin
@@ -59,8 +59,8 @@ Add support for AXI Bus
             else if (rid==4'd0) begin
                   IR_buffer <= {1'b1,rdata};
             end
-            else if (rid==4'd1) begin  //not necessary
-               mem_rdata   <= rdata;   //to mem
+            else if (rid==4'd1) begin  //隐含在else中，不必要
+               mem_rdata   <= rdata;   //传给mem级
                do_data_req <= 1'b0;
             end
          end
@@ -77,7 +77,7 @@ Add support for AXI Bus
       reg arvalid_r;
       if (arready&&arvalid&&arid==1'b0) begin
          PC_buffer <= araddr;
-         PC        <= next_PC; //PC refreshes
+         PC        <= next_PC; //刷新PC
          arvalid_r <= 1'b0;
       end
       
@@ -88,7 +88,25 @@ Add support for AXI Bus
       assign araddr = data_req ? data_raddr : PC;
       assign arsize = data_req ? data_rsize : 3'd2;
       
- ```     
+ ```
+#### store表的维护
+* mem级收到store指令，检查write_id_n，若write_id_n != 4，即表未满，可以发data_w_req。即
+```Verilog
+      reg [32:0] do_waddr_r [0:3]; //最高位为有效位
+      reg [ 3:0] do_dsize_r [0:3]; //用于计算是否能发出读data的request。
+      
+      wire [2:0] write_id_n;
+      assign write_id_n = do_waddr_r[0][32]==1'b0 ? 3'd0 :
+                          do_waddr_r[1][32]==1'b0 ? 3'd1 :
+                          do_waddr_r[2][32]==1'b0 ? 3'd2 :
+                          do_waddr_r[3][32]==1'b0 ? 3'd3 : 3'd4;
+      
+      data_w_req <= !data_w_req   ? memwrite && write_id_n!=3'd4 :
+                    data_in_ready ? 1'b0                         : data_w_req;
+      data_r_req <= !data_r_req ? memread && pot_hazard :
+                    r_data_back ? 1'b0                  : data_r_req; 
+```
+      
    
 ### 第二部分所需修改
 * 修改各级流水前进逻辑，使之能适应握手环境
