@@ -24,18 +24,61 @@ Add support for AXI Bus
    2. data读通道同理，在addr_ok后拉低req，但流水级阻塞直到r通道返回rvalid，即返回data_ok。
    3. data写通道直到传回awready和wready才拉低req，但此时可以继续流水级，因为维护了一张表。表满造成的影响是：新的sw的req无法发出，直到一个表项空出。
 #### 有关inst_FIFO的事项：
-   1. 此FIFO永远只用于等待LW返回读数据之前存储之前送入ram的inst读地址的读数据。
-   2. 在LW指令发出读地址后，将标记位置1，标记位为1期间，屏蔽inst_req，读通道返回的rid为0的数据，即指令，加上一位有效位，存入inst_FIFO。除此之外读数据直接给IR。前述标记位在LW数据返回后置0.
-   3. 写IR的逻辑中，可以从FIFO的尾端开始判断，若有效位为1，则从中读数据，依次向前，若全无效，从rdata端读数据，同时给出rready信号，axi的r_channel继续“流动”。
-   4. 从FIFO的任意项任意读出数据后，将有效位置0。
-#### 有关PC_FIFO的事项：
-   1. 此FIFO在每一次inst读地址握手成功时流动。
-   2. 其中每项仍需要有效位。
-   3. 每次IR更新时，从此FIFO中读有效PC，与指令一起向下传递，并将有效位置0。
-   4. FIFO满时不可继续发arvalid。
-   5. 有关分支跳
+>   1. 此FIFO永远只用于等待LW返回读数据之前存储之前送入ram的inst读地址的读数据。
+>   2. 在LW指令发出读地址后，将标记位置1，标记位为1期间，屏蔽inst_req，读通道返回的rid为0的数据，即指令，加上一位有效位，存入inst_FIFO。除此之外读数据直接给IR。前述标记位在LW数据返回后置0.
+>   3. 写IR的逻辑中，可以从FIFO的尾端开始判断，若有效位为1，则从中读数据，依次向前，若全无效，从rdata端读数据，同时给出rready信号，axi的r_channel继续“流动”。
+>   4. 从FIFO的任意项任意读出数据后，将有效位置0。
+#### 有关PC_FIFO的事项
+>   1. 此FIFO在每一次inst读地址握手成功时流动。
+>   2. 其中每项仍需要有效位。
+>   3. 每次IR更新时，从此FIFO中读有效PC，与指令一起向下传递，并将有效位置0。
+>   4. FIFO满时不可继续发arvalid。
+>   5. 有关分支跳
 #### 有关同拍inst和data同时发read_req的问题
-   按优先级来讲，肯定优先将data的读请求放入ar通道。但此时inst_req如何保持？
+   按优先级来讲，肯定优先将data的读请求放入ar通道。但此时inst_req如何保持？见下文。
+   
+#### AXI读通道：PC与memraddr
+* 将next_PC_gen模块视为一个提供AXI ar通道数据的选择，在需要时将它送入，否则保持。
+* ar通道握手成功且arid为0时，送入读指令请求，当且仅当此时更新next_PC。
+* 取指的outstanding值为2，为此设寄存器一个(PC_buffer)，当且仅当ar通道握手成功且arid是0时，将araddr写入PC_buffer。以备读出指令时传下debug_PC。
+* 当且仅当r通道握手成功且rid为0时，更新IR，将上述寄存器的值传给debug_PC。
+* 如果上升沿收到来自mem stage的读请求，优先处理data_req。直接送入ar通道，arid设1。当且仅当这次ar通道握手成功时，将一个标志位do_data_req置1。
+``` Verilog
+      assign rready = decode_allowin || data_req;      
+      
+      if (rready&&rvalid) begin
+         if (rid==4'd0) begin
+            if (!do_data_req) begin
+               debug_PC  <= PC_buffer;
+               IR        <= rdata;
+               arvalid_r <= 1'b1;
+            end
+            else begin
+               IR_buffer <= rdata;
+            end
+         end
+         if (rid==4'd1) begin
+            mem_rdata   <= rdata;
+            do_data_req <= 1'b0;
+//            if (decode_allowin) begin
+//               IR       <= IR_buffer;
+//               debug_PC <= PC_buffer;
+//            end
+         end
+      end
+      
+      reg arvalid_r;
+      if (arready&&arvalid&&arid==1'b0) begin
+         PC_buffer <= araddr;
+         PC        <= next_PC; //PC refreshes
+         arvalid_r <= 1'b0;
+      end
+      
+      assign arvalid = first_fetch || arvalid_r&&!do_data_req || data_req_pos;
+      
+      
+      
+ ```     
    
 ### 第二部分所需修改
 * 修改各级流水前进逻辑，使之能适应握手环境
