@@ -44,6 +44,8 @@ Add support for AXI Bus
 * 当且仅当r通道握手成功且rid为0时，更新IR，将上述寄存器的值传给debug_PC。
 * 如果上升沿收到来自mem stage的读请求，优先处理data_req。直接送入ar通道，arid设1。当且仅当这次ar通道握手成功时，将一个标志位do_data_req置1。
 ``` Verilog
+///////////////////////////////////////////////////
+//AXI ar&r channel
       assign rready = decode_allowin || data_req;      
       if (!IR_buffer[32]) begin
          if (rready&&rvalid) begin
@@ -79,9 +81,12 @@ Add support for AXI Bus
          arvalid_r <= 1'b0;
       end
       
-      assign arvalid = first_fetch || arvalid_r&&!do_data_req || data_req_pos;
-      
-      
+
+      assign arvalid = first_fetch || arvalid_r&&!do_data_req || data_req;
+
+      assign arid = data_req;
+      assign araddr = data_req ? data_raddr : PC;
+      assign arsize = data_req ? data_rsize : 3'd2;
       
  ```     
    
