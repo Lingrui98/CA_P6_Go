@@ -31,11 +31,13 @@ module memory_stage(
     input  wire  [ 1:0]   s_vaddr_EXE_MEM,
     input  wire  [ 2:0]    s_size_EXE_MEM,
 
-    // interaction with the data_sram
+/*    // interaction with the data_sram
     output wire  [31:0]      MemWdata_MEM,
     output wire                 MemEn_MEM,
     output wire  [ 3:0]      MemWrite_MEM,
     output wire  [31:0]    data_sram_addr,
+*/
+
     // output control signals to WB stage
     output reg            MemToReg_MEM_WB,
     output reg   [ 3:0]   RegWrite_MEM_WB,
@@ -62,8 +64,8 @@ module memory_stage(
 
     input                      wb_allowin,
     output                    mem_allowin,
-    output                       data_req,
-    input                   data_rdata_ok,
+    output reg   [ 1:0]        data_r_req,
+    output reg               do_req_raddr,
 
     input        [31:0]     mem_axi_rdata,
     input                   mem_axi_rvalid,
@@ -93,8 +95,8 @@ module memory_stage(
     input                   mem_axi_bvalid
 );
     
-    wire mem_allowgo;
-    
+    wire mem_readygo;
+    reg mem_valid;
     
     wire read_req;
     wire write_req;
@@ -118,10 +120,10 @@ module memory_stage(
     reg  bready;
     wire [3:0] bid;
     
-    reg do_req_raddr;
+    reg [1:0] data_w_req;
+    
     reg do_req_waddr, do_req_wdata;
     
-    reg data_r_req, data_w_req;
     
     reg r_addr_rcv;
     reg w_addr_rcv, w_data_rcv;
@@ -148,11 +150,10 @@ module memory_stage(
     
     
     
-    assign mem_allowgo = wb_allowin  &&
-                        ((data_r_req==2'd0&&!read_req&&data_w_req==2'd0&&!write_req) || //No memw or memr
-                         (data_r_req==2'd2&&r_data_back) ||                             //memrdata returns
-                         (data_w_req==2'd2&&data_in_ready_pos));                        //memwrite, addr and data all in
-    assign mem_allowin = mem_allowgo && wb_allowin;
+    assign mem_readygo = ((data_r_req==2'd0&&!read_req&&data_w_req==2'd0&&!write_req) || //No memw or memr
+                          (data_r_req==2'd2&&r_data_back) ||                             //memrdata returns
+                          (data_w_req==2'd2&&data_in_ready_pos));                        //memwrite, addr and data all in
+    assign mem_allowin = mem_readygo && wb_allowin;
     
     
     
@@ -171,16 +172,13 @@ module memory_stage(
 
 
     // interaction of signals and data with data_sram
-    assign MemEn_MEM       =     MemEn_EXE_MEM ;
-    assign MemWrite_MEM    =  MemWrite_EXE_MEM ;
-    assign data_sram_addr  = ALUResult_EXE_MEM ;
-    assign MemWdata_MEM    =  MemWdata_EXE_MEM ;
+
     assign Bypass_MEM      =      mfc0_EXE_MEM ? 
                               cp0Rdata_EXE_MEM : ALUResult_EXE_MEM;
 
     assign mem_axi_wid     = write_id_n;
     assign mem_axi_wstrb   = MemWrite_EXE_MEM;
-    assign mem_axi_wdata   = RegRdata2_EXE_MEM;
+    assign mem_axi_wdata   = MemWdata_EXE_MEM;
     assign mem_axi_wvalid  = wvalid;
     assign wready = mem_axi_wready;
 
@@ -215,7 +213,8 @@ module memory_stage(
     // output data to WB stage
     always @(posedge clk)
     if (~rst) begin
-        if (mem_allowgo) begin
+        if (mem_readygo&&mem_allowin
+    ) begin
             PC_MEM_WB        <=        PC_EXE_MEM;
             RegWaddr_MEM_WB  <=  RegWaddr_EXE_MEM;
             MemToReg_MEM_WB  <=  MemToReg_EXE_MEM;
@@ -230,7 +229,7 @@ module memory_stage(
             LHU_MEM_WB       <=       LHU_EXE_MEM;
             LW_MEM_WB        <=        LW_EXE_MEM;
             mfc0_MEM_WB      <=      mfc0_EXE_MEM;
-            if (data_rdata_ok)
+            if (r_data_back)
                 MemRdata_MEM_WB <=  mem_axi_rdata;
         end
         else begin
@@ -265,7 +264,8 @@ module memory_stage(
     always @(posedge clk) 
     begin
         //若表满，则不能发写请求
-        data_w_req  <=  data_w_req==2'd0   ? 
+        data_w_req  <=  rst ? 2'd0 :
+                        data_w_req==2'd0   ? 
                             (write_req ? 
                                 (write_id_n!=4'd4 ? 2'd2 : 2'd1) 
                             : data_w_req)
@@ -274,7 +274,8 @@ module memory_stage(
                         :   (data_in_ready_pos ? 1'b0 : data_w_req));
       
         //有潜在的相关可能，则不能发读请求
-        data_r_req  <=  data_r_req==2'd0 ? 
+        data_r_req  <=  rst ? 2'd0 :
+                        data_r_req==2'd0 ? 
                             read_req ? 
                                 !pot_hazard ? 2'd2 : 2'd1
                             : data_r_req
@@ -350,7 +351,6 @@ module memory_stage(
         wvalid           <= rst                 ? 1'b0 :
                             do_req_wdata_pos    ? 1'b1 :
                             wready              ? 1'b0 : wvalid;
-
     end
 
     always @ (posedge clk) begin
