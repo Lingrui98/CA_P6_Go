@@ -142,4 +142,15 @@ Add support for AXI Bus
 ### 第二部分所需修改
 * 修改各级流水前进逻辑，使之能适应握手环境
 * 各种例外，中断重新考虑
-* 
+* ...
+
+## 第二部分问题
+* Error 1
+```Verilog
+    [   2395 ns] Error!!!
+    reference: PC = 0xbfc0068c, wb_rf_wnum = 0x05, wb_rf_wdata = 0xfffff004
+    mycpu    : PC = 0xbfc00688, wb_rf_wnum = 0x04, wb_rf_wdata = 0xfffff008  
+    
+    错误原因： 新指令未取出之前，IR存着旧指令，每一拍持续向下一级发送，导致指令重复执行。   
+    调整方法： 在各级间加入valid信号，具体逻辑见Verilog复习.pdf
+```
