@@ -154,3 +154,7 @@ Add support for AXI Bus
     错误原因： 新指令未取出之前，IR存着旧指令，每一拍持续向下一级发送，导致指令重复执行。   
     调整方法： 在各级间加入valid信号，具体逻辑见Verilog复习.pdf
 ```
+* Error 2
+```Verilog
+   错误现象：debugPC = 0xbfc84768，陷入循环
+   错误原因：向前追溯发现在一拍取指的arvalid已经发出的前提下，ar通道被data的读请求抢占，导致在arvalid置1期间，ar通道的数据改变。
