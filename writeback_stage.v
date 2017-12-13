@@ -40,31 +40,56 @@ module writeback_stage(
     input  wire [31:0]   cp0Rdata_MEM_WB,
     input  wire              mfc0_MEM_WB,
     
-    output                    wb_allowin
+    output                    wb_allowin,
+    input                mem_to_wb_valid,
+    output                wb_stage_valid
 );
+        
+reg wb_valid;
+wire wb_ready_go;
+wire wb_to_regf_valid;
+
+assign wb_ready_go = 1'b1;
+assign wb_allowin = !wb_valid || wb_ready_go;
+assign wb_to_regf_valid = wb_valid && wb_ready_go;
+
+always @ (posedge clk) begin
+    if (rst) begin
+        wb_valid <= 1'b0;
+    end
+    else if (wb_allowin) begin
+        wb_valid <= mem_to_wb_valid;
+    end
+end
+    assign wb_stage_valid = wb_valid;
+   
+   
     wire        MemToReg_WB;
+    
     wire  [31:0]  HI_LO_out;
         
     wire  [31:0] MemRdata_Final;
-     
-    assign HI_LO_out = {32{MFHL_MEM_WB[1]}} & HI_MEM_WB |
-                       {32{MFHL_MEM_WB[0]}} & LO_MEM_WB ;  //2-1 MUX
+    
+    assign HI_LO_out = { 32{wb_valid}} & 
+                       ({32{MFHL_MEM_WB[1]}} & HI_MEM_WB |
+                        {32{MFHL_MEM_WB[0]}} & LO_MEM_WB );  //2-1 MUX
      
     
-    assign       PC_WB =       PC_MEM_WB;
-    assign RegWaddr_WB = RegWaddr_MEM_WB;
-    assign MemToReg_WB = MemToReg_MEM_WB;
-    assign RegWrite_WB = RegWrite_MEM_WB;
-    assign RegWdata_WB = |MFHL_MEM_WB ?      HI_LO_out  : 
-                         (MemToReg_WB ? MemRdata_Final  : 
-                         (mfc0_MEM_WB ? cp0Rdata_MEM_WB : ALUResult_MEM_WB));
+    assign       PC_WB =       PC_MEM_WB;// & {32{wb_valid}};
+    assign RegWaddr_WB = RegWaddr_MEM_WB & { 5{wb_valid}};
+    assign MemToReg_WB = MemToReg_MEM_WB &     wb_valid  ;
+    assign RegWrite_WB = RegWrite_MEM_WB & { 4{wb_valid}};
+    assign RegWdata_WB = {32{wb_valid}} &
+                         (|MFHL_MEM_WB ?      HI_LO_out  : 
+                          (MemToReg_WB ? MemRdata_Final  : 
+                          (mfc0_MEM_WB ? cp0Rdata_MEM_WB : ALUResult_MEM_WB)));
 
-    assign RegWdata_Bypass_WB = |MFHL_MEM_WB ?       HI_LO_out : 
-                                (mfc0_MEM_WB ? cp0Rdata_MEM_WB :ALUResult_MEM_WB);
+    assign RegWdata_Bypass_WB = 
+                                (|MFHL_MEM_WB ?       HI_LO_out :
+                                 (MemToReg_WB ?  MemRdata_Final :
+                                 (mfc0_MEM_WB ? cp0Rdata_MEM_WB :ALUResult_MEM_WB)));
 
-    
-    reg wb_valid;
-    assign wb_allowin = 1'b1;
+
 
 
 

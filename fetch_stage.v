@@ -43,35 +43,51 @@ module fetch_stage(
     input              fetch_axi_arready,
 //    output             fetch_axi_arvalid,
 
-    input              decode_allowin
+    input              decode_allowin,
+    output             fe_to_de_valid,
+
+    output             IR_buffer_valid
   );
     parameter reset_addr = 32'hbfc00000;
 
 
     reg [32:0] IR_buffer;
     reg [31:0] IR;
-
+    wire fetch_allowin;
+    wire fetch_ready_go;
+    
+    
     assign IR_IF_ID = IR;
 
-    assign fetch_axi_rready = decode_allowin && IRWrite || data_r_req!=2'd0; //IRWrite should be included in decode_allowin
+    assign fetch_axi_rready = decode_allowin || data_r_req!=2'd0; //IRWrite should be included in decode_allowin
     
-    reg fetch_valid;
-    wire fe_to_de_valid = fetch_valid && fetch_ready_go;  
+    wire fetch_valid;
 
-    wire fetch_ready_go = fetch_axi_rvalid && (fetch_axi_rid == 3'd0) 
-                            || (IR_buffer[32] == 1'b1);
-    wire fetch_allowin = !fetch_valid || fetch_ready_go && decode_allowin;
+//    wire validin        = fetch_axi_rvalid && fetch_axi_rid==4'd0 || IR_buffer[32];
+    //pipe0_valid && pipe0_ready_go
+    //pipe0_valid -> IR_buffer[32] || rvalid && rid==4'd0
+    //pipe0_ready_go
+    
+    assign IR_buffer_valid = IR_buffer[32];
 
+    assign fetch_valid = fetch_ready_go;
+ 
 
+    assign fetch_ready_go = fetch_axi_rvalid && fetch_axi_rid==4'd0 && data_r_req==2'd0 || IR_buffer[32];
+
+//    assign fetch_allowin  = !fetch_valid || fetch_ready_go && decode_allowin;
+    
+    assign fe_to_de_valid = fetch_valid && fetch_ready_go; 
+/*
     always @ (posedge clk) begin
         if (rst) begin
             fetch_valid <= 1'b0;
         end
         else if (fetch_allowin) begin
-            fetch_valid <= 1'b1;
+            fetch_valid <= validin;
         end
     end
-
+*/
 
 
     always @(posedge clk) begin // rdata 
@@ -103,7 +119,7 @@ module fetch_stage(
             end
         end
         else begin
-            if (decode_allowin) begin
+            if (decode_allowin&&IRWrite) begin
                 IR             <= IR_buffer;
                 IR_buffer      <= 33'd0;
                 PC_IF_ID       <= PC_buffer;

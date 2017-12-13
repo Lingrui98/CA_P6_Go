@@ -40,7 +40,14 @@ module Bypass_Unit(
     output wire        ID_EXE_Stall,
     // output the real read data in ID stage
     output wire [ 1:0] RegRdata1_src,
-    output wire [ 1:0] RegRdata2_src
+    output wire [ 1:0] RegRdata2_src,
+
+    input   is_j_or_b,
+
+    input   de_valid,
+    input   wb_valid,
+    input   exe_valid,
+    input   mem_valid
   );
 
     wire [ 4:0] rs_read, rt_read;
@@ -52,14 +59,14 @@ module Bypass_Unit(
          Haz_ID_MEM_rs, Haz_ID_MEM_rt,
          Haz_ID_WB_rs,  Haz_ID_WB_rt;
 
-    assign Haz_ID_EXE_rs = ((|RegWaddr_ID_EXE) & (|rs_read)) & ((&(rs_read^~RegWaddr_ID_EXE)) & (|RegWrite_ID_EXE));
-    assign Haz_ID_EXE_rt = ((|RegWaddr_ID_EXE) & (|rt_read)) & ((&(rt_read^~RegWaddr_ID_EXE)) & (|RegWrite_ID_EXE));
+    assign Haz_ID_EXE_rs = (((|RegWaddr_ID_EXE) & (|rs_read)) & ((&(rs_read^~RegWaddr_ID_EXE)) & (|RegWrite_ID_EXE))) & exe_valid&(de_valid|is_j_or_b) ;
+    assign Haz_ID_EXE_rt = (((|RegWaddr_ID_EXE) & (|rt_read)) & ((&(rt_read^~RegWaddr_ID_EXE)) & (|RegWrite_ID_EXE))) & exe_valid&(de_valid|is_j_or_b);
 
-    assign Haz_ID_MEM_rs = ((|RegWaddr_EXE_MEM) & (|rs_read)) & ((&(rs_read^~RegWaddr_EXE_MEM)) & (|RegWrite_EXE_MEM));
-    assign Haz_ID_MEM_rt = ((|RegWaddr_EXE_MEM) & (|rt_read)) & ((&(rt_read^~RegWaddr_EXE_MEM)) & (|RegWrite_EXE_MEM));
+    assign Haz_ID_MEM_rs = ((|RegWaddr_EXE_MEM) & (|rs_read)) & ((&(rs_read^~RegWaddr_EXE_MEM)) & (|RegWrite_EXE_MEM)) & mem_valid&(de_valid|is_j_or_b);
+    assign Haz_ID_MEM_rt = ((|RegWaddr_EXE_MEM) & (|rt_read)) & ((&(rt_read^~RegWaddr_EXE_MEM)) & (|RegWrite_EXE_MEM)) & mem_valid&(de_valid|is_j_or_b);
 
-    assign Haz_ID_WB_rs  = ((|RegWaddr_MEM_WB) & (|rs_read)) & ((&(rs_read^~RegWaddr_MEM_WB)) & (|RegWrite_MEM_WB));
-    assign Haz_ID_WB_rt  = ((|RegWaddr_MEM_WB) & (|rt_read)) & ((&(rt_read^~RegWaddr_MEM_WB)) & (|RegWrite_MEM_WB));
+    assign Haz_ID_WB_rs  = ((|RegWaddr_MEM_WB) & (|rs_read)) & ((&(rs_read^~RegWaddr_MEM_WB)) & (|RegWrite_MEM_WB)) & wb_valid&(de_valid|is_j_or_b);
+    assign Haz_ID_WB_rt  = ((|RegWaddr_MEM_WB) & (|rt_read)) & ((&(rt_read^~RegWaddr_MEM_WB)) & (|RegWrite_MEM_WB)) & wb_valid&(de_valid|is_j_or_b);
 
     assign RegRdata1_src = Haz_ID_EXE_rs ? 2'b01 :
                           (Haz_ID_MEM_rs ? 2'b10 :
@@ -68,10 +75,10 @@ module Bypass_Unit(
                           (Haz_ID_MEM_rt ? 2'b10 :
                           (Haz_ID_WB_rt  ? 2'b11 : 2'b00));
 
-    assign ID_EXE_Stall = ((((Haz_ID_EXE_rt |  Haz_ID_EXE_rs) & MemToReg_ID_EXE)  |
-                          (( Haz_ID_MEM_rt & ~Haz_ID_EXE_rt) | (Haz_ID_MEM_rs & ~Haz_ID_EXE_rs) & MemToReg_EXE_MEM)) |
-                          (( Haz_ID_WB_rt & ~Haz_ID_EXE_rt & ~Haz_ID_MEM_rt | Haz_ID_WB_rs & ~Haz_ID_EXE_rs & ~Haz_ID_MEM_rs) & MemToReg_MEM_WB |
-                            DIV_Busy  & DIV))
+    assign ID_EXE_Stall = ( (Haz_ID_EXE_rt |  Haz_ID_EXE_rs) & MemToReg_ID_EXE  |
+                            (Haz_ID_MEM_rt & ~Haz_ID_EXE_rt | Haz_ID_MEM_rs & ~Haz_ID_EXE_rs) & MemToReg_EXE_MEM |
+                            (Haz_ID_WB_rt & ~Haz_ID_EXE_rt & ~Haz_ID_MEM_rt | Haz_ID_WB_rs & ~Haz_ID_EXE_rs & ~Haz_ID_MEM_rs) & MemToReg_MEM_WB |
+                            DIV_Busy  & DIV)
                             & (~ex_int_handle & ~rst);
 
 

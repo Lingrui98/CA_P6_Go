@@ -28,7 +28,9 @@ module cp0reg(
     output [`DATA_WIDTH - 1:0] rdata,
     output [`DATA_WIDTH - 1:0] epc_value,
     output                     ex_int_handle,
-    output                     eret_handle
+    output                     eret_handle,
+
+    input                      exe_ready_go
 );
     // BadVAddr     reg: 8, sel: 0
     reg  [31:0] badvaddr;
@@ -166,7 +168,7 @@ module cp0reg(
       if (rst)
         compare <= 32'h0;
       else if (wen && waddr == 5'd11)
-        compare <= wdata[31:0];    
+        compare <= wdata[31:0];
       
       // Status       reg: 12, sel: 0
       if (rst) begin
@@ -182,9 +184,9 @@ module cp0reg(
         status_IE    <= 1'b0;
       end
       else begin
-        if (eret) 
+        if (eret && exe_ready_go) 
           status_EXL <= 1'b0;
-        else if (exc_pending | int_pending)
+        else if ((exc_pending || int_pending) && exe_ready_go)
           status_EXL <= 1'b1;
         else if (wen && waddr == 5'd12)
           status_EXL <= wdata[1];
@@ -239,7 +241,7 @@ module cp0reg(
       // EPC          reg: 14, sel: 0
       if (rst) 
         epc <= 32'd0;
-      else if (ex_int_handle)   //
+      else if (ex_int_handle&&exe_ready_go)   //
         epc <= epc_in;
       else if (wen && waddr == 5'd14)
         epc <= wdata[31:0];  

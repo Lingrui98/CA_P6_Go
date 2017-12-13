@@ -22,7 +22,11 @@ module execute_stage(
     input  wire [ 4:0]   RegWaddr_ID_EXE,
     input  wire               DSI_ID_EXE,
     input  wire [ 3:0]    Exc_vec_ID_EXE, // new -> exception vector
-    input  wire         cp0_Write_ID_EXE,           
+    input  wire         cp0_Write_ID_EXE,    
+
+    input                    eret_ID_EXE,
+
+
     // control signals passing from ID stage
     input  wire             MemEn_ID_EXE,
     input  wire         is_signed_ID_EXE,
@@ -33,6 +37,7 @@ module execute_stage(
     input  wire [ 3:0]   MemWrite_ID_EXE,
     input  wire [ 3:0]   RegWrite_ID_EXE,
     input  wire [ 1:0]       MULT_ID_EXE,
+    input       [ 1:0]        DIV_ID_EXE,
     input  wire [ 1:0]       MFHL_ID_EXE,
     input  wire [ 1:0]       MTHL_ID_EXE,
 
@@ -44,6 +49,11 @@ module execute_stage(
     input  wire [ 1:0]         SW_ID_EXE,
     input  wire                SB_ID_EXE,
     input  wire                SH_ID_EXE,
+
+
+
+    output      [ 1:0]           DIV_EXE,
+    output      [ 1:0]          MULT_EXE,
 
     // control signals passing to MEM stage
     output reg             MemEn_EXE_MEM,
@@ -77,6 +87,7 @@ module execute_stage(
     output reg  [31:0]  cp0Rdata_EXE_MEM,
     output reg              mfc0_EXE_MEM,
 
+    output      [31:0]     cp0_Write_EXE,
     output wire [31:0]      Exc_BadVaddr,   
     output wire [31:0]      Exc_EPC ,
     output wire             Exc_BD,
@@ -84,14 +95,41 @@ module execute_stage(
     input  wire [31:0]      cp0Rdata_EXE,
     
     input  wire             ex_int_handle,
+    output reg              ex_int_handling,
+    output reg              eret_handling,
     
     input                   mem_allowin,
-    output                  exe_allowin
+    input               de_to_exe_valid,
+    output                  exe_allowin,
+    output             exe_to_mem_valid,
+
+    output             exe_stage_valid,
+    input              ID_EXE_Stall,
+
+    output             exe_ready_go,
+
+    input       [31:0]     epc_value,
+    input       [31:0]            PC
+
 );
-    
-    wire exe_readygo = 1'b1;
-    assign exe_allowin = exe_readygo && mem_allowin;
-    
+    reg exe_valid;
+//    wire exe_ready_go;
+
+    assign exe_ready_go     = !(ex_int_handle&&PC!=32'hbfc00380);
+    assign exe_allowin      = !exe_valid || exe_ready_go && mem_allowin;
+    assign exe_to_mem_valid = exe_valid && exe_ready_go;
+
+
+    always @ (posedge clk) begin
+        if (rst) begin
+            exe_valid <= 1'b0;
+        end
+        else if (exe_allowin) begin
+            exe_valid <= de_to_exe_valid;
+        end
+    end
+
+    assign exe_stage_valid = exe_valid;
     
     wire        AdEL_EXE,AdES_EXE;
     wire        ACarryOut,AOverflow,AZero;     
@@ -107,7 +145,9 @@ module execute_stage(
     wire [ 1:0] vaddr_final;
     wire [ 2:0] s_size;
     
-
+    assign cp0_Write_EXE = cp0_Write_ID_EXE & ~(ex_int_handling|eret_handling);
+    assign MULT_EXE      = MULT_ID_EXE      & {2{~(ex_int_handling|eret_handling)}};
+    assign DIV_EXE       = DIV_ID_EXE       & {2{~(ex_int_handling|eret_handling)}};
 
     // Exception Signals
     assign BadVaddr_EXE = ALUResult_EXE & {32{AdEL_EXE|AdES_EXE}};
@@ -116,7 +156,8 @@ module execute_stage(
     // Exc_vec_ID_EXE[1]: syscall
     // Exc_vec_ID_EXE[0]: breakpoint
     assign Exc_BadVaddr = Exc_vec_ID_EXE[3] ? PC_ID_EXE : BadVaddr_EXE; // if PC is wrong
-    assign Exc_EPC      = DSI_ID_EXE ? PC_ID_EXE - 32'd4: PC_ID_EXE;
+    assign Exc_EPC      = exe_valid ? DSI_ID_EXE ? PC_ID_EXE - 32'd4: PC_ID_EXE 
+                                    : DSI_ID_EXE ? PC_ID_EXE : PC_ID_EXE + 32'd4;
     // Exc_vector[7]: interrupt
     // Exc_vector[6]: PC_AdEL
     // Exc_vector[5]: Reserved Instruction
@@ -133,42 +174,72 @@ module execute_stage(
     assign Bypass_EXE = mfc0_ID_EXE ? cp0Rdata_EXE : ALUResult_EXE;
     
     assign Exc_BD = DSI_ID_EXE;
-    
-    always @(posedge clk)
-    if (~rst) begin
-        // control signals passing to MEM stage
-        MemWrite_EXE_MEM  <=   MemWrite_Final & {4{~ex_int_handle}};
-           MemEn_EXE_MEM  <=     MemEn_ID_EXE & ~ex_int_handle;
-        MemToReg_EXE_MEM  <=  MemToReg_ID_EXE & ~ex_int_handle;
-        RegWrite_EXE_MEM  <=  RegWrite_ID_EXE & {4{~ex_int_handle}};
-            MULT_EXE_MEM  <=      MULT_ID_EXE & {2{~ex_int_handle}};
-            MFHL_EXE_MEM  <=      MFHL_ID_EXE & {2{~ex_int_handle}};
-            MTHL_EXE_MEM  <=      MTHL_ID_EXE & {2{~ex_int_handle}};
-              LB_EXE_MEM  <=        LB_ID_EXE & ~ex_int_handle;
-             LBU_EXE_MEM  <=       LBU_ID_EXE & ~ex_int_handle;
-              LH_EXE_MEM  <=        LH_ID_EXE & ~ex_int_handle;
-             LHU_EXE_MEM  <=       LHU_ID_EXE & ~ex_int_handle;
-              LW_EXE_MEM  <=        LW_ID_EXE & {2{~ex_int_handle}};
-            mfc0_EXE_MEM  <=      mfc0_ID_EXE & ~ex_int_handle;
-        // data passing to MEM stage
-        RegWaddr_EXE_MEM  <=     RegWaddr_EXE;
-       ALUResult_EXE_MEM  <=    ALUResult_EXE;
-        MemWdata_EXE_MEM  <=         MemWdata;
-              PC_EXE_MEM  <=        PC_ID_EXE;
-       RegRdata1_EXE_MEM  <= RegRdata1_ID_EXE;
-       RegRdata2_EXE_MEM  <= RegRdata2_ID_EXE;
-        cp0Rdata_EXE_MEM  <=     cp0Rdata_EXE; //cp0Rdata_ID_EXE;
-         s_vaddr_EXE_MEM  <=      vaddr_final;
-          s_size_EXE_MEM  <=           s_size;
+
+//    reg ex_int_handling;
+//    reg eret_handling;
+    always @ (posedge clk) begin
+        if (rst) begin
+            ex_int_handling <= 1'b0;
+              eret_handling <= 1'b0;
+        end
+        else begin
+            if (PC_ID_EXE==32'hbfc00380) begin
+                ex_int_handling <= 1'b0;
+            end
+            else if (ex_int_handle) begin
+                ex_int_handling <= 1'b1;
+            end
+
+            if (PC_ID_EXE==epc_value) begin
+                eret_handling <= 1'b0;
+            end
+            else if (eret_ID_EXE) begin
+                eret_handling <= 1'b1;
+            end
+        end
     end
-    else begin
-      {    MemEn_EXE_MEM,  MemToReg_EXE_MEM,  MemWrite_EXE_MEM, RegWrite_EXE_MEM, 
-        RegWaddr_EXE_MEM,      MULT_EXE_MEM,      MFHL_EXE_MEM,     MTHL_EXE_MEM, 
-              LB_EXE_MEM,       LBU_EXE_MEM,        LH_EXE_MEM,      LHU_EXE_MEM, 
-              LW_EXE_MEM,      mfc0_EXE_MEM, ALUResult_EXE_MEM, MemWdata_EXE_MEM,
-              PC_EXE_MEM, RegRdata1_EXE_MEM, RegRdata2_EXE_MEM, cp0Rdata_EXE_MEM,
-              s_vaddr_EXE_MEM, s_size_EXE_MEM
-      } <= 'd0;
+
+
+    wire exe_control_invalid;
+    assign exe_control_invalid = ex_int_handling&PC_ID_EXE!=32'hbfc00380 | eret_handling&PC_ID_EXE!=epc_value;
+
+
+    always @ (posedge clk) begin
+        if (rst) begin
+            {    MemEn_EXE_MEM,  MemToReg_EXE_MEM,  MemWrite_EXE_MEM, RegWrite_EXE_MEM, 
+              RegWaddr_EXE_MEM,      MULT_EXE_MEM,      MFHL_EXE_MEM,     MTHL_EXE_MEM, 
+                    LB_EXE_MEM,       LBU_EXE_MEM,        LH_EXE_MEM,      LHU_EXE_MEM, 
+                    LW_EXE_MEM,      mfc0_EXE_MEM, ALUResult_EXE_MEM, MemWdata_EXE_MEM,
+                    PC_EXE_MEM, RegRdata1_EXE_MEM, RegRdata2_EXE_MEM, cp0Rdata_EXE_MEM,
+                    s_vaddr_EXE_MEM, s_size_EXE_MEM
+            } <= 'd0;
+        end
+        else if (exe_to_mem_valid && mem_allowin) begin
+                // control signals passing to MEM stage
+            MemWrite_EXE_MEM  <=   MemWrite_Final & {4{~(exe_control_invalid)}};
+               MemEn_EXE_MEM  <=     MemEn_ID_EXE &    ~(exe_control_invalid);
+            MemToReg_EXE_MEM  <=  MemToReg_ID_EXE &    ~(exe_control_invalid);
+            RegWrite_EXE_MEM  <=  RegWrite_ID_EXE & {4{~(exe_control_invalid)}};
+                MULT_EXE_MEM  <=      MULT_ID_EXE & {2{~(exe_control_invalid)}};
+                MFHL_EXE_MEM  <=      MFHL_ID_EXE & {2{~(exe_control_invalid)}};
+                MTHL_EXE_MEM  <=      MTHL_ID_EXE & {2{~(exe_control_invalid)}};
+                  LB_EXE_MEM  <=        LB_ID_EXE &    ~(exe_control_invalid);
+                 LBU_EXE_MEM  <=       LBU_ID_EXE &    ~(exe_control_invalid);
+                  LH_EXE_MEM  <=        LH_ID_EXE &    ~(exe_control_invalid);
+                 LHU_EXE_MEM  <=       LHU_ID_EXE &    ~(exe_control_invalid);
+                  LW_EXE_MEM  <=        LW_ID_EXE & {2{~(exe_control_invalid)}};
+                mfc0_EXE_MEM  <=      mfc0_ID_EXE &    ~(exe_control_invalid);
+            // data passing to MEM stage
+            RegWaddr_EXE_MEM  <=     RegWaddr_EXE;
+           ALUResult_EXE_MEM  <=    ALUResult_EXE;
+            MemWdata_EXE_MEM  <=         MemWdata;
+                  PC_EXE_MEM  <=        PC_ID_EXE;
+           RegRdata1_EXE_MEM  <= RegRdata1_ID_EXE;
+           RegRdata2_EXE_MEM  <= RegRdata2_ID_EXE;
+            cp0Rdata_EXE_MEM  <=     cp0Rdata_EXE; //cp0Rdata_ID_EXE;
+             s_vaddr_EXE_MEM  <=      vaddr_final;
+              s_size_EXE_MEM  <=           s_size;
+        end
     end
 
     MUX_4_32 ALUA_MUX(

@@ -97,17 +97,34 @@ module decode_stage(
     output            is_j_or_br_ID,
     output            is_rs_read_ID,
     output            is_rt_read_ID,
-    
+
+    input             ex_int_handling,
+    input             eret_handling,
+ 
+    output              de_to_exe_valid,   
     output               decode_allowin,
-    input                   exe_allowin
+    input                   exe_allowin,
+    input                fe_to_de_valid,
+
+    output               decode_stage_valid
   );
 
     reg decode_valid;
-    wire decode_readygo = 1'b1;
-    assign decode_allowin = exe_allowin && decode_readygo;
+    wire decode_ready_go;
 
+    assign decode_ready_go = !ID_EXE_Stall;
+    assign decode_allowin = !decode_valid || exe_allowin && decode_ready_go;
+    assign de_to_exe_valid = decode_valid&&decode_ready_go;
 
-
+    always @ (posedge clk) begin
+        if (rst) begin
+            decode_valid <= 1'b0;
+        end
+        else if (decode_allowin) begin
+            decode_valid <= fe_to_de_valid;
+        end
+    end
+    assign decode_stage_valid = decode_valid;
 
 // `ifndef SIMU_DEBUG
 // reg  [31:0] de_inst;        //instr code @decode stage
@@ -115,7 +132,7 @@ module decode_stage(
     wire                    eret_ID; 
     wire                  cp0_Write;
     wire              BranchCond_ID;
-    wire                    Zero_ID;
+//    wire                    Zero_ID;
     wire                MemToReg_ID;
     wire                    JSrc_ID;
     wire                   MemEn_ID;
@@ -164,7 +181,7 @@ module decode_stage(
     wire [31:0] EXE_MEM_data;
     wire [31:0]  MEM_WB_data;
     
-    wire exc_delay = ex_int_handle_ID | eret_ID_EXE;
+/*    wire exc_delay = ex_int_handle_ID | eret_ID_EXE;
     
     reg exc_delay_r;
     always @ (posedge clk)
@@ -172,7 +189,7 @@ module decode_stage(
         exc_delay_r <= 1'b0;
     else 
         exc_delay_r <= exc_delay;
-
+*/
 
     assign Exc_vec_ID = {PC_AdEL_IF_ID,RI_ID,sys_ID,bp_ID};
 
@@ -190,14 +207,79 @@ module decode_stage(
     assign            Sa_ID = {{27{1'b0}}, Inst_IF_ID[10: 6]};
     assign SgnExtend_LF2_ID = SgnExtend_ID << 2;
     // signals passing to PC calculate module
-    assign  JSrc =  JSrc_ID & ~exc_delay_r;
-    assign PCSrc = PCSrc_ID & {2{~exc_delay_r}};
+    assign  JSrc =  JSrc_ID & ~(ex_int_handling|eret_handling);
+    assign PCSrc = PCSrc_ID & {2{~(ex_int_handling|eret_handling)}};
     // data passing to PC calculate module
     assign  J_target_ID = {{PC_IF_ID[31:28]},{Inst_IF_ID[25:0]},{2'b00}};
     assign JR_target_ID = RegRdata1_Final_ID;
     assign Br_target_ID = PC_add_4_ID + SgnExtend_LF2_ID;
     assign        PC_ID = PC_IF_ID;
     assign  PC_add_4_ID = PC_add_4_IF_ID;
+
+    always @ (posedge clk) begin
+        if (rst) begin
+            {       nop_count,
+                 MemEn_ID_EXE,  MemToReg_ID_EXE,     ALUop_ID_EXE, RegWrite_ID_EXE, 
+              MemWrite_ID_EXE,   ALUSrcA_ID_EXE,   ALUSrcB_ID_EXE,     MULT_ID_EXE, 
+                   DIV_ID_EXE,      MFHL_ID_EXE,      MTHL_ID_EXE,       LB_ID_EXE,
+                   LBU_ID_EXE,        LH_ID_EXE,       LHU_ID_EXE,       LW_ID_EXE, 
+                    SW_ID_EXE,        SB_ID_EXE,        SH_ID_EXE,     mfc0_ID_EXE,
+              RegWaddr_ID_EXE,        Sa_ID_EXE,        PC_ID_EXE, PC_add_4_ID_EXE, 
+             RegRdata1_ID_EXE, RegRdata2_ID_EXE, SgnExtend_ID_EXE,  ZExtend_ID_EXE, 
+             is_signed_ID_EXE,       DSI_ID_EXE,   Exc_vec_ID_EXE,     eret_ID_EXE,
+                    Rd_ID_EXE, cp0_Write_ID_EXE
+            } <= 'd0;
+        end
+        else begin
+            if (de_to_exe_valid&&exe_allowin) begin
+                  // control signals passing to EXE stage
+                  MemEn_ID_EXE  <=           MemEn_ID;
+               MemToReg_ID_EXE  <=        MemToReg_ID;
+                  ALUop_ID_EXE  <=           ALUop_ID;
+               RegWrite_ID_EXE  <=        RegWrite_ID;
+               MemWrite_ID_EXE  <=        MemWrite_ID;
+                ALUSrcA_ID_EXE  <=         ALUSrcA_ID;
+                ALUSrcB_ID_EXE  <=         ALUSrcB_ID;
+                   MULT_ID_EXE  <=            MULT_ID;
+                    DIV_ID_EXE  <=             DIV_ID;
+                   MFHL_ID_EXE  <=            MFHL_ID;
+                   MTHL_ID_EXE  <=            MTHL_ID;
+                     LB_ID_EXE  <=              LB_ID;
+                    LBU_ID_EXE  <=             LBU_ID;
+                     LH_ID_EXE  <=              LH_ID;
+                    LHU_ID_EXE  <=             LHU_ID;
+                     LW_ID_EXE  <=              LW_ID;
+                     SW_ID_EXE  <=              SW_ID;
+                     SB_ID_EXE  <=              SB_ID;
+                     SH_ID_EXE  <=              SH_ID;
+                   mfc0_ID_EXE  <=            mfc0_ID;
+              is_signed_ID_EXE  <=       is_signed_ID;
+                Exc_vec_ID_EXE  <=         Exc_vec_ID;
+              cp0_Write_ID_EXE  <=          cp0_Write;
+                    // delay slot 
+                    DSI_ID_EXE  <=          DSI_IF_ID;
+                   eret_ID_EXE  <=            eret_ID;
+              // data transfering to EXE stage
+                     Rd_ID_EXE  <=                 rd;
+               RegWaddr_ID_EXE  <=        RegWaddr_ID;
+                     Sa_ID_EXE  <=              Sa_ID;
+                     PC_ID_EXE  <=           PC_IF_ID;
+               PC_add_4_ID_EXE  <=     PC_add_4_IF_ID;
+              RegRdata1_ID_EXE  <= RegRdata1_Final_ID;
+              RegRdata2_ID_EXE  <= RegRdata2_Final_ID;
+              SgnExtend_ID_EXE  <=       SgnExtend_ID;
+                ZExtend_ID_EXE  <=         ZExtend_ID;
+              // cp0Rdata_ID_EXE  <=        cp0Rdata_ID;
+            end
+        end
+    end
+/*
+
+
+
+
+
+
 
     always @(posedge clk) begin
       if (rst) begin
@@ -340,7 +422,7 @@ module decode_stage(
         // cp0Rdata_ID_EXE  <=          cp0Rdata_ID;
       end
     end // always region end here
-
+*/
     Branch_Cond Branch_Cond(
         .A           ( RegRdata1_Final_ID),
         .B           ( RegRdata2_Final_ID),
@@ -418,7 +500,7 @@ module decode_stage(
                            {32{MFHL_ID_EXE_1[0]}}  &         LO         ;
   wire [31:0]  MEM_HI_LO = {32{MFHL_EXE_MEM[1]}}   &         HI         | 
                            {32{MFHL_EXE_MEM[0]}}   &         LO         ;
-  wire [31:0]   WB_HI_LO = {32{MFHL_MEM_WB[1]}}    &         HI         | 
+  wire [31:0]   WB_HI_LO = {32{MFHL_MEM_WB[1]}}    &         HI         |
                            {32{MFHL_MEM_WB[0]}}    &         LO         ;
 
   assign ID_EXE_data  =  |MFHL_ID_EXE  ? (MULT_EXE_MEM ? MULT_HI_LO : EXE_HI_LO) : Bypass_EXE;

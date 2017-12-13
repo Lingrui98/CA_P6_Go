@@ -134,6 +134,9 @@ wire [ 4:0]   RegWaddr_ID_EXE;
 wire [31:0]     ALUResult_EXE;
 wire [31:0]     ALUResult_MEM;
 
+wire [ 1:0]           DIV_EXE;
+wire [ 1:0]          MULT_EXE;
+
 wire [31:0]  RegRdata1_ID_EXE;
 wire [31:0]  RegRdata2_ID_EXE;
 wire [31:0]         Sa_ID_EXE;
@@ -159,6 +162,11 @@ wire [31:0]  MemWdata_EXE_MEM;
 wire [31:0]        PC_EXE_MEM;
 wire [31:0] RegRdata1_EXE_MEM;
 wire [31:0] RegRdata2_EXE_MEM;
+wire [ 1:0]   s_vaddr_EXE_MEM;
+wire [ 2:0]    s_size_EXE_MEM;
+
+wire [ 1:0]          MULT_MEM;
+wire [ 1:0]          MTHL_MEM;
 
 wire          MemToReg_MEM_WB;
 wire [ 3:0]   RegWrite_MEM_WB;
@@ -202,7 +210,7 @@ wire [31:0] CP0Raddr         ;
 wire [31:0] CP0Rdata         ;
 wire [31:0] CP0Waddr         ;
 wire [31:0] CP0Wdata         ;
-wire [ 3:0] CP0Write         ;
+wire        CP0Write         ;
 wire [31:0]      epc         ;
 // CP0Reg IO
 
@@ -223,7 +231,9 @@ wire [31:0] Exc_EPC          ;
 wire [ 5:0] Exc_Cause        ;
 
 wire        ex_int_handle    ;
+wire        ex_int_handling  ;
 wire        eret_handle      ;
+wire        eret_handling    ;
 wire        DSI_ID_EXE       ;                
 wire        eret_ID_EXE      ;                 
 wire        cp0_Write_ID_EXE ;                      
@@ -237,7 +247,8 @@ wire [31:0]  PC_buffer       ;
 wire PC_refresh              ;
 
 wire [ 1:0] data_r_req       ;               
-wire do_req_raddr            ;               
+wire do_req_raddr            ;           
+wire mem_read_req;    
 
 wire [31:0] PC               ;
 wire [31:0] mem_axi_rdata    ;                 
@@ -277,6 +288,22 @@ wire        exe_allowin;
 wire        mem_allowin;
 wire        wb_allowin;
                      
+wire        fe_to_de_valid;
+wire        de_to_exe_valid;
+wire        exe_to_mem_valid;
+wire        mem_to_wb_valid;
+
+wire        de_valid;
+wire        exe_valid;
+wire        mem_valid;
+wire        wb_valid;
+
+wire        exe_ready_go;
+
+wire        IR_buffer_valid;
+
+wire        j_or_b_ID;
+
 
 nextpc_gen nextpc_gen(
     .clk               (               clk), // I  1
@@ -324,9 +351,12 @@ fetch_stage fe_stage(
     .fetch_axi_rvalid  (      cpu_rvalid ), // I  1
     .fetch_axi_rdata   (      cpu_rdata  ), // I 32       
     .fetch_axi_rid     (      cpu_rid    ), // I  4            
-    .fetch_axi_arready (      cpu_arready), // I  1          
+    .fetch_axi_arready (      cpu_arready), // I  1    
 
-    .decode_allowin    (decode_allowin   )  // I  1         
+    .fe_to_de_valid    (   fe_to_de_valid), // O  1
+    .decode_allowin    (decode_allowin   ), // I  1         
+
+    .IR_buffer_valid   (  IR_buffer_valid)
   );
 
 
@@ -360,6 +390,9 @@ decode_stage de_stage(
     .RegRdata2_src     (     RegRdata2_src), // I  2 Bypass
     .ID_EXE_Stall      (      ID_EXE_Stall), // I  1 Stall
     .DIV_Complete      (      DIV_Complete), // I  1 Stall
+
+
+
     .JSrc              (              JSrc), // O  1
     .PCSrc             (             PCSrc), // O  2
     .J_target_ID       (       J_target_ID), // O 32
@@ -406,154 +439,187 @@ decode_stage de_stage(
 
     .is_j_or_br_ID     (            DSI_ID), // O  1 NEW
 
+    .ex_int_handling   (   ex_int_handling),
+    .eret_handling     (     eret_handling),
+
+    .de_to_exe_valid   (   de_to_exe_valid), // O  1
     .decode_allowin    (    decode_allowin), // O  1
-    .exe_allowin       (       exe_allowin)  // I  1      
+    .fe_to_de_valid    (    fe_to_de_valid), // I  1
+    .exe_allowin       (       exe_allowin), // I  1      
+
+    .decode_stage_valid(          de_valid)
   );
 
 
-execute_stage exe_stage(
-    .clk               (              clk), // I  1
-    .rst               (              rst), // I  1
-    .PC_add_4_ID_EXE   (  PC_add_4_ID_EXE), // I 32
-    .cp0_Write_ID_EXE  ( cp0_Write_ID_EXE), // I  1
-    .PC_ID_EXE         (        PC_ID_EXE), // I 32
-    .RegRdata1_ID_EXE  ( RegRdata1_ID_EXE), // I 32
-    .RegRdata2_ID_EXE  ( RegRdata2_ID_EXE), // I 32
-    .Sa_ID_EXE         (        Sa_ID_EXE), // I 32
-    .SgnExtend_ID_EXE  ( SgnExtend_ID_EXE), // I 32
-    .ZExtend_ID_EXE    (   ZExtend_ID_EXE), // I 32
-    .RegWaddr_ID_EXE   (  RegWaddr_ID_EXE), // I  5
-    .MemEn_ID_EXE      (     MemEn_ID_EXE), // I  1
-    .MemToReg_ID_EXE   (  MemToReg_ID_EXE), // I  1 
-    .is_signed_ID_EXE  ( is_signed_ID_EXE), // I  1 help ALU to judge Overflow
-    .DSI_ID_EXE        (       DSI_ID_EXE), // I  1 delay slot instruction tag
-    .Rd_ID_EXE         (        Rd_ID_EXE), // I  5 NEW
-    .Exc_vec_ID_EXE    (   Exc_vec_ID_EXE), // I  4 NEW
-    .ALUSrcA_ID_EXE    (   ALUSrcA_ID_EXE), // I  2
-    .ALUSrcB_ID_EXE    (   ALUSrcB_ID_EXE), // I  2
-    .ALUop_ID_EXE      (     ALUop_ID_EXE), // I  4
-    .MemWrite_ID_EXE   (  MemWrite_ID_EXE), // I  4
-    .RegWrite_ID_EXE   (  RegWrite_ID_EXE), // I  4
-    .MULT_ID_EXE       (      MULT_ID_EXE), // I  2
-    .MFHL_ID_EXE       (      MFHL_ID_EXE), // I  2
-    .MTHL_ID_EXE       (      MTHL_ID_EXE), // I  2
-    .LB_ID_EXE         (        LB_ID_EXE), // I  1 
-    .LBU_ID_EXE        (       LBU_ID_EXE), // I  1 
-    .LH_ID_EXE         (        LH_ID_EXE), // I  1 
-    .LHU_ID_EXE        (       LHU_ID_EXE), // I  1 
-    .LW_ID_EXE         (        LW_ID_EXE), // I  2 
-    .SW_ID_EXE         (        SW_ID_EXE), // I  2 
-    .SB_ID_EXE         (        SB_ID_EXE), // I  1 
-    .SH_ID_EXE         (        SH_ID_EXE), // I  1 
-    .MemEn_EXE_MEM     (    MemEn_EXE_MEM), // O  1
-    .MemToReg_EXE_MEM  ( MemToReg_EXE_MEM), // O  1
-    .MemWrite_EXE_MEM  ( MemWrite_EXE_MEM), // O  4
-    .RegWrite_EXE_MEM  ( RegWrite_EXE_MEM), // O  4
-    .MULT_EXE_MEM      (     MULT_EXE_MEM), // O  2
-    .MFHL_EXE_MEM      (     MFHL_EXE_MEM), // O  2
-    .MTHL_EXE_MEM      (     MTHL_EXE_MEM), // O  2
-    .LB_EXE_MEM        (       LB_EXE_MEM), // O  1 
-    .LBU_EXE_MEM       (      LBU_EXE_MEM), // O  1 
-    .LH_EXE_MEM        (       LH_EXE_MEM), // O  1 
-    .LHU_EXE_MEM       (      LHU_EXE_MEM), // O  1 
-    .LW_EXE_MEM        (       LW_EXE_MEM), // O  2 
-    .RegWaddr_EXE_MEM  ( RegWaddr_EXE_MEM), // O  5
-    .ALUResult_EXE_MEM (ALUResult_EXE_MEM), // O 32
-    .MemWdata_EXE_MEM  ( MemWdata_EXE_MEM), // O 32
-    .PC_EXE_MEM        (       PC_EXE_MEM), // O 32
-    .RegRdata1_EXE_MEM (RegRdata1_EXE_MEM), // O 32
-    .RegRdata2_EXE_MEM (RegRdata2_EXE_MEM), // O 32 
-    .Bypass_EXE        (       Bypass_EXE), // O 32
+    execute_stage exe_stage
+        (
+            .clk               (clk),
+            .rst               (rst),
+            .PC_add_4_ID_EXE   (PC_add_4_ID_EXE),
+            .PC_ID_EXE         (PC_ID_EXE),
+            .RegRdata1_ID_EXE  (RegRdata1_ID_EXE),
+            .RegRdata2_ID_EXE  (RegRdata2_ID_EXE),
+            .Sa_ID_EXE         (Sa_ID_EXE),
+            .SgnExtend_ID_EXE  (SgnExtend_ID_EXE),
+            .ZExtend_ID_EXE    (ZExtend_ID_EXE),
+            .RegWaddr_ID_EXE   (RegWaddr_ID_EXE),
+            .DSI_ID_EXE        (DSI_ID_EXE),
+            .Exc_vec_ID_EXE    (Exc_vec_ID_EXE),
+            .cp0_Write_ID_EXE  (cp0_Write_ID_EXE),
+            .MemEn_ID_EXE      (MemEn_ID_EXE),
+            .is_signed_ID_EXE  (is_signed_ID_EXE),
+            .MemToReg_ID_EXE   (MemToReg_ID_EXE),
+            .ALUSrcA_ID_EXE    (ALUSrcA_ID_EXE),
+            .ALUSrcB_ID_EXE    (ALUSrcB_ID_EXE),
+            .ALUop_ID_EXE      (ALUop_ID_EXE),
+            .MemWrite_ID_EXE   (MemWrite_ID_EXE),
+            .RegWrite_ID_EXE   (RegWrite_ID_EXE),
+            .DIV_ID_EXE        (DIV_ID_EXE),
+            .MULT_ID_EXE       (MULT_ID_EXE),
+            .MFHL_ID_EXE       (MFHL_ID_EXE),
+            .MTHL_ID_EXE       (MTHL_ID_EXE),
+            .LB_ID_EXE         (LB_ID_EXE),
+            .LBU_ID_EXE        (LBU_ID_EXE),
+            .LH_ID_EXE         (LH_ID_EXE),
+            .LHU_ID_EXE        (LHU_ID_EXE),
+            .LW_ID_EXE         (LW_ID_EXE),
+            .SW_ID_EXE         (SW_ID_EXE),
+            .SB_ID_EXE         (SB_ID_EXE),
+            .SH_ID_EXE         (SH_ID_EXE),
+            .MemEn_EXE_MEM     (MemEn_EXE_MEM),
+            .MemToReg_EXE_MEM  (MemToReg_EXE_MEM),
+            .MemWrite_EXE_MEM  (MemWrite_EXE_MEM),
+            .RegWrite_EXE_MEM  (RegWrite_EXE_MEM),
+            .MULT_EXE_MEM      (MULT_EXE_MEM),
+            .MFHL_EXE_MEM      (MFHL_EXE_MEM),
+            .MTHL_EXE_MEM      (MTHL_EXE_MEM),
+            .LB_EXE_MEM        (LB_EXE_MEM),
+            .LBU_EXE_MEM       (LBU_EXE_MEM),
+            .LH_EXE_MEM        (LH_EXE_MEM),
+            .LHU_EXE_MEM       (LHU_EXE_MEM),
+            .LW_EXE_MEM        (LW_EXE_MEM),
+            .RegWaddr_EXE_MEM  (RegWaddr_EXE_MEM),
+            .ALUResult_EXE_MEM (ALUResult_EXE_MEM),
+            .MemWdata_EXE_MEM  (MemWdata_EXE_MEM),
+            .PC_EXE_MEM        (PC_EXE_MEM),
+            .RegRdata1_EXE_MEM (RegRdata1_EXE_MEM),
+            .RegRdata2_EXE_MEM (RegRdata2_EXE_MEM),
+            .s_vaddr_EXE_MEM   (s_vaddr_EXE_MEM),
+            .s_size_EXE_MEM    (s_size_EXE_MEM),
+            .Bypass_EXE        (Bypass_EXE),
+            .Rd_ID_EXE         (Rd_ID_EXE),
+            .mfc0_ID_EXE       (mfc0_ID_EXE),
+            .cp0Rdata_EXE_MEM  (cp0Rdata_EXE_MEM),
+            .mfc0_EXE_MEM      (mfc0_EXE_MEM),
+            .Exc_BadVaddr      (Exc_BadVaddr),
+            .Exc_EPC           (Exc_EPC),
+            .Exc_BD            (Exc_BD),
+            .Exc_Vec           (Exc_Vec),
+            .cp0Rdata_EXE      (CP0Rdata),
+            .ex_int_handle     (ex_int_handle),
+            .ex_int_handling   (ex_int_handling),
+            .eret_handling     (eret_handling),
+            .mem_allowin       (mem_allowin),
+            .de_to_exe_valid   (de_to_exe_valid),
+            .exe_allowin       (exe_allowin),
+            .exe_to_mem_valid  (exe_to_mem_valid),
 
-    .cp0Rdata_EXE      (         CP0Rdata), // I 32
-    .mfc0_ID_EXE       (      mfc0_ID_EXE), // I  1
-    .mfc0_EXE_MEM      (     mfc0_EXE_MEM), // O  1
-    .cp0Rdata_EXE_MEM  ( cp0Rdata_EXE_MEM), // O 32
+            .cp0_Write_EXE     (CP0Write),
+            .exe_ready_go      (exe_ready_go),
 
-    .Exc_BadVaddr      (     Exc_BadVaddr), // O 32
-    .Exc_EPC           (          Exc_EPC), // O 32
-    .Exc_Vec           (          Exc_Vec), // O  7
-    .Exc_BD            (          Exc_BD ), // O  1
-    
-    .ex_int_handle     (    ex_int_handle), // I  1
+            .exe_stage_valid   (exe_valid),
+            .ID_EXE_Stall      (ID_EXE_Stall),
 
-    .mem_allowin       (      mem_allowin), // I  1
-    .exe_allowin       (      exe_allowin)  // O  1
+            .DIV_EXE           (DIV_EXE),
+            .MULT_EXE          (MULT_EXE),
 
-    );
+            .eret_ID_EXE       (eret_ID_EXE),
+
+            .epc_value         (epc),
+            .PC                (PC)
+        );
 
 
-memory_stage mem_stage(
-    .clk               (              clk), // I  1
-    .rst               (              rst), // I  1
-    .MemEn_EXE_MEM     (    MemEn_EXE_MEM), // I  1
-    .MemToReg_EXE_MEM  ( MemToReg_EXE_MEM), // I  1
-    .MemWrite_EXE_MEM  ( MemWrite_EXE_MEM), // I  4
-    .RegWrite_EXE_MEM  ( RegWrite_EXE_MEM), // I  4
-    .RegWaddr_EXE_MEM  ( RegWaddr_EXE_MEM), // I  5
-    .ALUResult_EXE_MEM (ALUResult_EXE_MEM), // I 32
-    .MemWdata_EXE_MEM  ( MemWdata_EXE_MEM), // I 32
-    .RegRdata2_EXE_MEM (RegRdata2_EXE_MEM), // I 32 
-    .PC_EXE_MEM        (       PC_EXE_MEM), // I 32
-    .MFHL_EXE_MEM      (     MFHL_EXE_MEM), // I  2
-    .LB_EXE_MEM        (       LB_EXE_MEM), // I  1 
-    .LBU_EXE_MEM       (      LBU_EXE_MEM), // I  1 
-    .LH_EXE_MEM        (       LH_EXE_MEM), // I  1 
-    .LHU_EXE_MEM       (      LHU_EXE_MEM), // I  1 
-    .LW_EXE_MEM        (       LW_EXE_MEM), // I  2 
-//    .MemEn_MEM         (     data_sram_en), // O  1
-//    .MemWrite_MEM      (    data_sram_wen), // O  4
-//    .data_sram_addr    (   data_sram_addr), // O 32
+    memory_stage mem_stage
+        (
+            .clk               (clk),
+            .rst               (rst),
+            .MemEn_EXE_MEM     (MemEn_EXE_MEM),
+            .MemToReg_EXE_MEM  (MemToReg_EXE_MEM),
+            .MemWrite_EXE_MEM  (MemWrite_EXE_MEM),
+            .RegWrite_EXE_MEM  (RegWrite_EXE_MEM),
+            .MFHL_EXE_MEM      (MFHL_EXE_MEM),
+            .LB_EXE_MEM        (LB_EXE_MEM),
+            .LBU_EXE_MEM       (LBU_EXE_MEM),
+            .LH_EXE_MEM        (LH_EXE_MEM),
+            .LHU_EXE_MEM       (LHU_EXE_MEM),
+            .LW_EXE_MEM        (LW_EXE_MEM),
+            .RegWaddr_EXE_MEM  (RegWaddr_EXE_MEM),
+            .ALUResult_EXE_MEM (ALUResult_EXE_MEM),
+            .MemWdata_EXE_MEM  (MemWdata_EXE_MEM),
+            .RegRdata2_EXE_MEM (RegRdata2_EXE_MEM),
+            .PC_EXE_MEM        (PC_EXE_MEM),
+            .s_vaddr_EXE_MEM   (s_vaddr_EXE_MEM),
+            .s_size_EXE_MEM    (s_size_EXE_MEM),
 
-//    .MemWdata_MEM      (  data_sram_wdata), // O 32
-    .MemToReg_MEM_WB   (  MemToReg_MEM_WB), // O  1
-    .RegWrite_MEM_WB   (  RegWrite_MEM_WB), // O  4
-    .LB_MEM_WB         (        LB_MEM_WB), // O  1 
-    .LBU_MEM_WB        (       LBU_MEM_WB), // O  1 
-    .LH_MEM_WB         (        LH_MEM_WB), // O  1 
-    .LHU_MEM_WB        (       LHU_MEM_WB), // O  1 
-    .LW_MEM_WB         (        LW_MEM_WB), // O  2 
-    .RegWaddr_MEM_WB   (  RegWaddr_MEM_WB), // O  5
-    .ALUResult_MEM_WB  ( ALUResult_MEM_WB), // O 32
-    .RegRdata2_MEM_WB  ( RegRdata2_MEM_WB), // O 32 
-    .PC_MEM_WB         (        PC_MEM_WB), // O 32
-    .MFHL_MEM_WB       (      MFHL_MEM_WB), // O  2
+            .MULT_EXE_MEM      (MULT_EXE_MEM),
+            .MTHL_EXE_MEM      (MTHL_EXE_MEM),
+            .MULT_MEM          (MULT_MEM),
+            .MTHL_MEM          (MTHL_MEM),
 
-    .Bypass_MEM        (       Bypass_MEM), // O 32
-    
-    .cp0Rdata_MEM_WB   (  cp0Rdata_MEM_WB), // O 32
-    .mfc0_MEM_WB       (      mfc0_MEM_WB), // O  1
-    .mfc0_EXE_MEM      (     mfc0_EXE_MEM), // I  1
-    .cp0Rdata_EXE_MEM  ( cp0Rdata_EXE_MEM), // I 32
+            .MemToReg_MEM_WB   (MemToReg_MEM_WB),
+            .RegWrite_MEM_WB   (RegWrite_MEM_WB),
+            .MFHL_MEM_WB       (MFHL_MEM_WB),
+            .LB_MEM_WB         (LB_MEM_WB),
+            .LBU_MEM_WB        (LBU_MEM_WB),
+            .LH_MEM_WB         (LH_MEM_WB),
+            .LHU_MEM_WB        (LHU_MEM_WB),
+            .LW_MEM_WB         (LW_MEM_WB),
+            .RegWaddr_MEM_WB   (RegWaddr_MEM_WB),
+            .ALUResult_MEM_WB  (ALUResult_MEM_WB),
+            .RegRdata2_MEM_WB  (RegRdata2_MEM_WB),
+            .PC_MEM_WB         (PC_MEM_WB),
+            .MemRdata_MEM_WB   (MemRdata_MEM_WB),
+            .Bypass_MEM        (Bypass_MEM),
+            .cp0Rdata_EXE_MEM  (cp0Rdata_EXE_MEM),
+            .mfc0_EXE_MEM      (mfc0_EXE_MEM),
+            .cp0Rdata_MEM_WB   (cp0Rdata_MEM_WB),
+            .mfc0_MEM_WB       (mfc0_MEM_WB),
+            .wb_allowin        (wb_allowin),
+            .exe_to_mem_valid  (exe_to_mem_valid),
+            .mem_allowin       (mem_allowin),
+            .mem_to_wb_valid   (mem_to_wb_valid),
+            .data_r_req        (data_r_req),
+            .do_req_raddr      (do_req_raddr),
+            .mem_axi_rdata     (mem_axi_rdata),
+            .mem_axi_rvalid    (mem_axi_rvalid),
+            .mem_axi_rid       (mem_axi_rid),
+            .mem_axi_rready    (mem_axi_rready),
+            .mem_axi_arid      (mem_axi_arid),
+            .mem_axi_araddr    (mem_axi_araddr),
+            .mem_axi_arsize    (mem_axi_arsize),
+            .mem_axi_arready   (mem_axi_arready),
+            .mem_axi_arvalid   (mem_axi_arvalid),
+            .mem_axi_awid      (mem_axi_awid),
+            .mem_axi_awaddr    (mem_axi_awaddr),
+            .mem_axi_awsize    (mem_axi_awsize),
+            .mem_axi_awvalid   (mem_axi_awvalid),
+            .mem_axi_awready   (mem_axi_awready),
+            .mem_axi_wid       (mem_axi_wid),
+            .mem_axi_wdata     (mem_axi_wdata),
+            .mem_axi_wstrb     (mem_axi_wstrb),
+            .mem_axi_wvalid    (mem_axi_wvalid),
+            .mem_axi_wready    (mem_axi_wready),
+            .mem_axi_bready    (mem_axi_bready),
+            .mem_axi_bid       (mem_axi_bid),
+            .mem_axi_bvalid    (mem_axi_bvalid),
 
-    .wb_allowin        (       wb_allowin),                
-    .mem_allowin       (      mem_allowin),              
-    .data_r_req        (       data_r_req),          
-    .do_req_raddr      (     do_req_raddr),  
+            .cpu_arid          (cpu_arid),
+            .mem_read_req      (mem_read_req),
 
-    .mem_axi_rdata     ( mem_axi_rdata   ),       
-    .mem_axi_rvalid    ( mem_axi_rvalid  ),           
-    .mem_axi_rid       ( mem_axi_rid     ),       
-    .mem_axi_rready    ( mem_axi_rready  ),           
-    .mem_axi_arid      ( mem_axi_arid    ),        
-    .mem_axi_araddr    ( mem_axi_araddr  ), 
-    .mem_axi_arsize    ( mem_axi_arsize  ), 
-    .mem_axi_arready   ( mem_axi_arready ),       
-    .mem_axi_arvalid   ( mem_axi_arvalid ),       
-    .mem_axi_awid      ( mem_axi_awid    ),           
-    .mem_axi_awaddr    ( mem_axi_awaddr  ),              
-    .mem_axi_awsize    ( mem_axi_awsize  ),          
-    .mem_axi_awvalid   ( mem_axi_awvalid ),           
-    .mem_axi_awready   ( mem_axi_awready ),         
-    .mem_axi_wid       ( mem_axi_wid     ),              
-    .mem_axi_wdata     ( mem_axi_wdata   ),          
-    .mem_axi_wstrb     ( mem_axi_wstrb   ),              
-    .mem_axi_wvalid    ( mem_axi_wvalid  ),  
-    .mem_axi_wready    ( mem_axi_wready  ),  
-    .mem_axi_bready    ( mem_axi_bready  ),  
-    .mem_axi_bid       ( mem_axi_bid     ),           
-    .mem_axi_bvalid    ( mem_axi_bvalid  )
-  );
+            .mem_stage_valid   (mem_valid)
+        );
+
 
 
 writeback_stage wb_stage(
@@ -583,7 +649,9 @@ writeback_stage wb_stage(
     .cp0Rdata_MEM_WB   (  cp0Rdata_MEM_WB), // I 32
     .mfc0_MEM_WB       (      mfc0_MEM_WB), // I  1
 
-    .wb_allowin        (       wb_allowin)  // O  1  
+    .mem_to_wb_valid   (  mem_to_wb_valid), // I  1
+    .wb_allowin        (       wb_allowin), // O  1
+    .wb_stage_valid    (         wb_valid)  
 );
 
 Bypass_Unit bypass_unit(
@@ -618,7 +686,14 @@ Bypass_Unit bypass_unit(
     .ID_EXE_Stall       (     ID_EXE_Stall),
     // output the real read data in ID stage
     .RegRdata1_src      (    RegRdata1_src),
-    .RegRdata2_src      (    RegRdata2_src)
+    .RegRdata2_src      (    RegRdata2_src),
+
+    .de_valid           (         de_valid),
+    .wb_valid           (         wb_valid),
+    .exe_valid          (        exe_valid),
+    .mem_valid          (        mem_valid),
+    
+    .is_j_or_b          (           DSI_ID)
 );
 
 reg_file RegFile(
@@ -642,14 +717,16 @@ cp0reg cp0(
     .Exc_Vec           (          Exc_Vec), // I  7
     .waddr             (         CP0Waddr), // I  5
     .raddr             (         CP0Raddr), // I  5
-    .wen               ( cp0_Write_ID_EXE), // I  1
+    .wen               (        CP0Write), // I  1
     .wdata             (         CP0Wdata), // I 32
     .epc_in            (          Exc_EPC), // I 32
     .Exc_BadVaddr      (     Exc_BadVaddr), // I 32
     .rdata             (         CP0Rdata), // O 32
     .epc_value         (              epc), // O 32
     .ex_int_handle     (    ex_int_handle), // O  1
-    .eret_handle       (      eret_handle)  // O  1
+    .eret_handle       (      eret_handle), // O  1
+
+    .exe_ready_go      (     exe_ready_go)  // I  1
 
 );
 
@@ -658,8 +735,8 @@ multiplyer mul(
     .y          (              RegRdata2_ID_EXE),
     .mul_clk    (                           clk),
     .resetn     (                        resetn),
-    .clken      (                  |MULT_ID_EXE),
-    .mul_signed (MULT_ID_EXE[0]&~MULT_ID_EXE[1]),
+    .clken      (                     |MULT_EXE),
+    .mul_signed (      MULT_EXE[0]&~MULT_EXE[1]),
     .result     (                   MULT_Result)
 );
 
@@ -668,8 +745,8 @@ divider div(
     .rst        (                           rst),
     .x          (              RegRdata1_ID_EXE),
     .y          (              RegRdata2_ID_EXE),
-    .div        (                   |DIV_ID_EXE),
-    .div_signed (  DIV_ID_EXE[0]&~DIV_ID_EXE[1]),
+    .div        (                      |DIV_EXE),
+    .div_signed (        DIV_EXE[0]&~DIV_EXE[1]),
     .s          (                  DIV_quotient),
     .r          (                 DIV_remainder),
     .busy       (                      DIV_Busy),
@@ -687,14 +764,14 @@ HILO HILO(
 );
 
 
-assign HI_in = |MULT_EXE_MEM    ? MULT_Result[63:32] :
-                MTHL_EXE_MEM[1] ? RegRdata1_EXE_MEM  :
+assign HI_in = |MULT_MEM        ? MULT_Result[63:32] :
+                MTHL_MEM[1]     ? RegRdata1_EXE_MEM  :
                 DIV_Complete    ? DIV_remainder      : 'd0;
-assign LO_in = |MULT_EXE_MEM    ? MULT_Result[31: 0] :
-                MTHL_EXE_MEM[0] ? RegRdata1_EXE_MEM  :
+assign LO_in = |MULT_MEM        ? MULT_Result[31: 0] :
+                MTHL_MEM[0]     ? RegRdata1_EXE_MEM  :
                 DIV_Complete    ? DIV_quotient       : 'd0;
-assign HILO_Write[1] = |MULT_EXE_MEM | DIV_Complete | MTHL_EXE_MEM[1];
-assign HILO_Write[0] = |MULT_EXE_MEM | DIV_Complete | MTHL_EXE_MEM[0];
+assign HILO_Write[1] = |MULT_MEM | DIV_Complete | MTHL_MEM[1];
+assign HILO_Write[0] = |MULT_MEM | DIV_Complete | MTHL_MEM[0];
 
 assign CP0Waddr = Rd_ID_EXE;
 assign CP0Wdata = RegRdata2_ID_EXE;
@@ -709,18 +786,26 @@ assign debug_wb_rf_wnum  = RegWaddr_WB;
 assign debug_wb_rf_wdata = RegWdata_WB;
 `endif
 
-reg arvalid_r;
-reg first_fetch;
+reg  arvalid_r;
+reg  first_fetch;
+reg  [31:0] do_araddr;
+reg  [ 3:0] do_arid;
+reg  [ 2:0] do_arsize;
+reg  [ 1:0] do_r_req;
+//reg  do_arvalid;
+wire [ 3:0] do_r_req_pos;
 
-assign cpu_arid     =  do_req_raddr ? `MEM_ARID : `INST_ARID;
-assign cpu_araddr   =  do_req_raddr ? mem_axi_araddr : {PC[31:2],2'd0};
+
+
+assign cpu_arid     =  do_arid;
+assign cpu_araddr   =  do_araddr;
 assign cpu_arlen    =  8'd0;
-assign cpu_arsize   =  do_req_raddr ? mem_axi_arsize : 3'd2;
+assign cpu_arsize   =  do_arsize;
 assign cpu_arburst  =  2'd1;
 assign cpu_arlock   =  2'd0;
 assign cpu_arcache  =  4'd0;
 assign cpu_arprot   =  3'd0;
-assign cpu_arvalid  =  first_fetch || arvalid_r&&data_r_req!=2'd2 || do_req_raddr;
+assign cpu_arvalid  =  |do_r_req;
 
 assign mem_axi_arready = cpu_arready;
 assign fetch_axi_arready = cpu_arready;
@@ -734,7 +819,7 @@ assign fetch_axi_rdata = cpu_rdata;
 assign mem_axi_rvalid = cpu_rvalid;
 assign fetch_axi_rvalid = cpu_rvalid;
 
-assign cpu_rready   =  fetch_axi_rready;
+assign cpu_rready   =  fetch_axi_rready || mem_axi_rready;
 assign cpu_awid     =  mem_axi_awid;
 assign cpu_awaddr   =  mem_axi_awaddr;
 assign cpu_awlen    =  8'd0;
@@ -772,4 +857,66 @@ always @(posedge clk) begin   // arvalid_r only deals with inst
     first_fetch <= 1'b0;
   end
 end
+
+
+always @ (posedge clk) begin
+    if (rst) begin
+        do_r_req <= 2'd0;
+    end
+    else begin
+        if (do_r_req==2'd0) begin
+            if (first_fetch) begin
+                do_r_req <= 2'd1;
+            end
+            else if (do_req_raddr) begin
+                do_r_req <= 2'd3;
+            end
+            else if (arvalid_r&&data_r_req!=2'd2&&!IR_buffer_valid) begin
+                do_r_req <= 2'd2;
+            end
+        end
+        else begin
+            if (do_r_req==2'd1||do_r_req==2'd2) begin
+                if (cpu_arready&&cpu_arid==4'd0) begin
+                    do_r_req <= 2'd0;
+                end
+            end
+            if (do_r_req==2'd3) begin
+                if (cpu_arready&&cpu_arid==4'd1) begin
+                    do_r_req <= 2'd0;
+                end
+            end
+        end
+    end
+end
+
+assign do_r_req_pos[0] = 1'b0;
+assign do_r_req_pos[1] = do_r_req==2'd0 && first_fetch;
+assign do_r_req_pos[2] = do_r_req==2'd0 && arvalid_r&&data_r_req!=2'd2;
+assign do_r_req_pos[3] = do_r_req==2'd0 && do_req_raddr;
+
+
+always @ (posedge clk) begin
+    if (rst) begin
+        do_arid   <= 'd0;
+        do_arsize <= 'd0;
+        do_araddr <= 'd0;
+    end
+    else begin
+        if (do_r_req_pos[1]||do_r_req_pos[2]) begin
+            do_arid   <= `INST_ARID;
+            do_arsize <= 3'd2;
+            do_araddr <= {PC[31:2],2'd0};
+        end
+        if (do_r_req_pos[3]) begin
+            do_arid   <= `MEM_ARID;
+            do_arsize <= mem_axi_arsize;
+            do_araddr <= mem_axi_araddr;
+        end
+    end
+end
+
+
+
+
 endmodule //mycpu_top
