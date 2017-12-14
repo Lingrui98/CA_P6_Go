@@ -106,6 +106,7 @@ module decode_stage(
     input                   exe_allowin,
     input                fe_to_de_valid,
 
+    output               exe_refresh,
     output               decode_stage_valid
   );
 
@@ -126,9 +127,8 @@ module decode_stage(
     end
     assign decode_stage_valid = decode_valid;
 
-// `ifndef SIMU_DEBUG
-// reg  [31:0] de_inst;        //instr code @decode stage
-// `endif
+    assign exe_refresh = de_to_exe_valid&&exe_allowin;
+
     wire                    eret_ID; 
     wire                  cp0_Write;
     wire              BranchCond_ID;
@@ -172,8 +172,6 @@ module decode_stage(
     wire [31:0]  RegRdata2_Final_ID;
     wire [ 3:0]          Exc_vec_ID;
 
-    // Bypassed regdata
- //   reg  [ 2:0]       nop_count;
 
     wire [ 4:0]  rs,rt,sa,rd;
 
@@ -181,15 +179,6 @@ module decode_stage(
     wire [31:0] EXE_MEM_data;
     wire [31:0]  MEM_WB_data;
     
-/*    wire exc_delay = ex_int_handle_ID | eret_ID_EXE;
-    
-    reg exc_delay_r;
-    always @ (posedge clk)
-    if (rst) 
-        exc_delay_r <= 1'b0;
-    else 
-        exc_delay_r <= exc_delay;
-*/
 
     assign Exc_vec_ID = {PC_AdEL_IF_ID,RI_ID,sys_ID,bp_ID};
 

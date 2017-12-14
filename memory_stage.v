@@ -282,7 +282,6 @@ module memory_stage(
             mfc0_MEM_WB      <=      mfc0_EXE_MEM;
             MemRdata_MEM_WB  <=     mem_axi_rdata;
         end
-//        else if (mem_allowin) MemRdata_MEM_WB <= mem_axi_rdata;
     end
 
     assign MULT_MEM = MULT_EXE_MEM & {2{mem_valid}};

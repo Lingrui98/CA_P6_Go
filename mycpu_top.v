@@ -242,7 +242,6 @@ wire [ 6:0] Exc_Vec          ;
 wire [ 4:0] Rd_ID_EXE        ;
 wire [ 3:0] Exc_vec_ID_EXE   ;
 
-wire PC_abnormal             ; //For delay slot that wasn't fetched
 wire [31:0]  PC_buffer       ;
 wire PC_refresh              ;
 
@@ -298,6 +297,7 @@ wire        exe_valid;
 wire        mem_valid;
 wire        wb_valid;
 
+wire        exe_refresh;
 wire        exe_ready_go;
 
 wire        IR_buffer_valid;
@@ -317,15 +317,12 @@ nextpc_gen nextpc_gen(
     .J_target          (       J_target_ID), // I 32
     .Br_addr           (      Br_target_ID), // I 32
 
-//    .PC_next           (           PC_next), // O 32
     .PC_AdEL           (           PC_AdEL), // O  1
     .ex_int_handle     (     ex_int_handle), // I  1
-    .PC_abnormal       (       PC_abnormal), // O  1 
-
-    .inst_sram_addr    (                PC), // O 32
+    .PC                (                PC), // O 32
 
     .PC_buffer         (         PC_buffer), // O 32 
-    .PC_refresh        (          PC_refresh)  // I  1
+    .PC_refresh        (        PC_refresh)  // I  1
   );
 
 
@@ -335,9 +332,6 @@ fetch_stage fe_stage(
     .DSI_ID            (           DSI_ID), // I  1
     .IRWrite           (          IRWrite), // I  1
     .PC_AdEL           (          PC_AdEL), // I  1 
-//    .PC_next           (          PC_next), // I 32
-    .PC_abnormal       (      PC_abnormal), // I  1
-    
     .PC_IF_ID          (         PC_IF_ID), // O 32
     .PC_add_4_IF_ID    (   PC_add_4_IF_ID), // O 32
     .IR_IF_ID          (         IR_IF_ID), // O 32
@@ -346,7 +340,7 @@ fetch_stage fe_stage(
     .DSI_IF_ID         (        DSI_IF_ID), // O  1
    
     .data_r_req        (       data_r_req), // I  2      
-//    .do_req_raddr      (     do_req_raddr), // I  1                
+             
     .fetch_axi_rready  (fetch_axi_rready ), // O  1
     .fetch_axi_rvalid  (      cpu_rvalid ), // I  1
     .fetch_axi_rdata   (      cpu_rdata  ), // I 32       
@@ -447,6 +441,7 @@ decode_stage de_stage(
     .fe_to_de_valid    (    fe_to_de_valid), // I  1
     .exe_allowin       (       exe_allowin), // I  1      
 
+    .exe_refresh       (       exe_refresh),
     .decode_stage_valid(          de_valid)
   );
 
@@ -726,7 +721,8 @@ cp0reg cp0(
     .ex_int_handle     (    ex_int_handle), // O  1
     .eret_handle       (      eret_handle), // O  1
 
-    .exe_ready_go      (     exe_ready_go)  // I  1
+    .exe_ready_go      (     exe_ready_go),
+    .exe_refresh       (      exe_refresh)  // I  1
 
 );
 

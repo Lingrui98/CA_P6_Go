@@ -30,7 +30,8 @@ module cp0reg(
     output                     ex_int_handle,
     output                     eret_handle,
 
-    input                      exe_ready_go
+    input                      exe_ready_go,
+    input                      exe_refresh
 );
     // BadVAddr     reg: 8, sel: 0
     reg  [31:0] badvaddr;
@@ -122,6 +123,8 @@ module cp0reg(
     wire int_pending = |int_vec & status_IE;
     wire exc_pending = |Exc_Vec;
     
+    wire int_handle;
+    wire ex_handle;
 /*    reg timer_int_flag;
     always @ (posedge clk)
         if(rst)
@@ -130,8 +133,12 @@ module cp0reg(
             timer_int_flag <= 'd1;
         else timer_int_flag <= 'd0;*/
     assign ex_int_handle = ~status_EXL & (int_pending | exc_pending);
+    assign int_handle = ~status_EXL & int_pending;
+    assign ex_handle  = ~status_EXL & exc_pending;
  
-    
+    reg wait_for_epc;
+    reg wait_for_epc_r;
+
     always @(posedge clk) begin
       if (~status_EXL) begin
         if (|int_vec && status_IE) begin
@@ -239,13 +246,41 @@ module cp0reg(
         cause_IP2    <= int[0];
       end
       // EPC          reg: 14, sel: 0
-      if (rst) 
-        epc <= 32'd0;
-      else if (ex_int_handle&&exe_ready_go)   //
-        epc <= epc_in;
+      if (rst) begin
+          epc <= 32'd0;
+      end
+      else begin
+      if (wait_for_epc_neg || ex_handle&&exe_ready_go) begin
+          epc <= epc_in;
+      end
       else if (wen && waddr == 5'd14)
-        epc <= wdata[31:0];  
+          epc <= wdata[31:0];
+      end
     end
+
+    always @ (posedge clk) begin
+        if (rst) begin
+            wait_for_epc <= 1'b0;
+        end
+        else begin
+            if (int_handle)
+                wait_for_epc <= 1'b1;
+            else if (wait_for_epc&&exe_refresh)
+                wait_for_epc <= 1'b0;
+        end
+    end
+
+
+    always @ (posedge clk) begin
+        if (rst) begin
+            wait_for_epc_r <= 1'b0;
+        end
+        else begin
+            wait_for_epc_r <= wait_for_epc;
+        end
+    end
+
+    assign wait_for_epc_neg = ~wait_for_epc & wait_for_epc_r;
 
     assign rdata = {32{&(~(raddr ^ 5'b01000))}}  & badvaddr_value |
                    {32{&(~(raddr ^ 5'b01001))}}  &    count_value |
@@ -253,14 +288,14 @@ module cp0reg(
                    {32{&(~(raddr ^ 5'b01100))}}  &   status_value |
                    {32{&(~(raddr ^ 5'b01101))}}  &    cause_value |
                    {32{&(~(raddr ^ 5'b01110))}}  &      epc_value ;
-    assign int_vec = {cause_IP7 & status_IM7,
-                      cause_IP6 & status_IM6,
-                      cause_IP5 & status_IM5,
-                      cause_IP4 & status_IM4,
-                      cause_IP3 & status_IM3,
-                      cause_IP2 & status_IM2,
-                      cause_IP1 & status_IM1,
-                      cause_IP0 & status_IM0};
+    assign int_vec = {(int[5] | cause_TI) & status_IM7,
+                       int[4]             & status_IM6,
+                       int[3]             & status_IM5,
+                       int[2]             & status_IM4,
+                       int[1]             & status_IM3,
+                       int[0]             & status_IM2,
+                      cause_IP1           & status_IM1,
+                      cause_IP0           & status_IM0};
                
     assign eret_handle = eret; 
                

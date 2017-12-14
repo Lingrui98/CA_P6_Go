@@ -20,7 +20,6 @@ module fetch_stage(
  //   input  wire [31:0] PC_next,
     input  wire        PC_AdEL,
     // interaction with inst_sram
-    input  wire        PC_abnormal,
     
     input  [31:0]        PC_buffer,
     // data transfering to ID stage
@@ -63,31 +62,13 @@ module fetch_stage(
     
     wire fetch_valid;
 
-//    wire validin        = fetch_axi_rvalid && fetch_axi_rid==4'd0 || IR_buffer[32];
-    //pipe0_valid && pipe0_ready_go
-    //pipe0_valid -> IR_buffer[32] || rvalid && rid==4'd0
-    //pipe0_ready_go
     
     assign IR_buffer_valid = IR_buffer[32];
 
     assign fetch_valid = fetch_ready_go;
- 
-
-    assign fetch_ready_go = fetch_axi_rvalid && fetch_axi_rid==4'd0 && data_r_req==2'd0 || IR_buffer[32];
-
-//    assign fetch_allowin  = !fetch_valid || fetch_ready_go && decode_allowin;
-    
+    assign fetch_ready_go = fetch_axi_rvalid && fetch_axi_rid==4'd0 && data_r_req==2'd0 || IR_buffer_valid;
     assign fe_to_de_valid = fetch_valid && fetch_ready_go; 
-/*
-    always @ (posedge clk) begin
-        if (rst) begin
-            fetch_valid <= 1'b0;
-        end
-        else if (fetch_allowin) begin
-            fetch_valid <= validin;
-        end
-    end
-*/
+
 
 
     always @(posedge clk) begin // rdata 
@@ -99,7 +80,7 @@ module fetch_stage(
           PC_AdEL_IF_ID  <=  1'd0;
           DSI_IF_ID      <=  1'd0;
         end
-        else if (!IR_buffer[32]) begin
+        else if (!IR_buffer_valid) begin
             if (fetch_axi_rready&&fetch_axi_rvalid) begin
                 if (data_r_req==2'd0) begin
                     if (fetch_axi_rid==4'd0) begin
@@ -131,43 +112,5 @@ module fetch_stage(
     end
 
 
-
-
-
-
-
-/*
-       if (data_r_req!=2'd0 && fetch_axi_rid==3'd0 && fetch_axi_rvalid && fetch_axi_rready) begin // inst data return first
-        IR_buffer <= {1'b1,fetch_axi_rdata};
-      end
-      else if (decode_allowin && fetch_ready_go) begin // I'm afraid of multi-driving problem                                    
-        if (IR_buffer[32]) begin                       // Think twice when practising
-          IR        <= IR_buffer[31:0];                // There are some problems when interacting with AXI
-          IR_buffer <= 33'd0;                          // We need discuss.
-        end
-        else begin
-          IR        <= fetch_axi_rdata;
-        end 
-        PC_IF_ID       <= PC_buffer;
-        PC_add_4_IF_ID <= PC_buffer + 32'd4;
-        PC_AdEL_IF_ID  <= PC_AdEL;
-        DSI_IF_ID      <= DSI_ID;
-      end
-*/
-
 endmodule //fetch_stage
 
-/*
-module Adder(
-    input  [31:0] A,
-    input  [31:0] B,
-    output [31:0] Result
-  );
-    ALU adder(
-        .A      (      A),
-        .B      (      B),
-        .ALUop  (4'b0010),   //ADD
-        .Result ( Result)
-    );
-endmodule
-*/

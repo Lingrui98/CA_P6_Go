@@ -106,19 +106,16 @@ module execute_stage(
     output             exe_stage_valid,
     input              ID_EXE_Stall,
 
-    output             exe_ready_go,
-
+    output                 exe_ready_go,
     input       [31:0]     epc_value,
     input       [31:0]            PC
 
 );
     reg exe_valid;
-//    wire exe_ready_go;
 
     assign exe_ready_go     = !(ex_int_handle&&PC!=32'hbfc00380);
     assign exe_allowin      = !exe_valid || exe_ready_go && mem_allowin;
     assign exe_to_mem_valid = exe_valid && exe_ready_go;
-
 
     always @ (posedge clk) begin
         if (rst) begin
@@ -156,8 +153,8 @@ module execute_stage(
     // Exc_vec_ID_EXE[1]: syscall
     // Exc_vec_ID_EXE[0]: breakpoint
     assign Exc_BadVaddr = Exc_vec_ID_EXE[3] ? PC_ID_EXE : BadVaddr_EXE; // if PC is wrong
-    assign Exc_EPC      = exe_valid ? DSI_ID_EXE ? PC_ID_EXE - 32'd4: PC_ID_EXE 
-                                    : DSI_ID_EXE ? PC_ID_EXE : PC_ID_EXE + 32'd4;
+    assign Exc_EPC      = DSI_ID_EXE ? PC_ID_EXE - 32'd4: PC_ID_EXE;
+
     // Exc_vector[7]: interrupt
     // Exc_vector[6]: PC_AdEL
     // Exc_vector[5]: Reserved Instruction
@@ -175,8 +172,7 @@ module execute_stage(
     
     assign Exc_BD = DSI_ID_EXE;
 
-//    reg ex_int_handling;
-//    reg eret_handling;
+
     always @ (posedge clk) begin
         if (rst) begin
             ex_int_handling <= 1'b0;
@@ -200,7 +196,7 @@ module execute_stage(
     end
 
 
-    wire exe_control_invalid;
+    wire   exe_control_invalid;
     assign exe_control_invalid = ex_int_handling&PC_ID_EXE!=32'hbfc00380 | eret_handling&PC_ID_EXE!=epc_value;
 
 

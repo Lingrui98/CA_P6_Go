@@ -47,11 +47,10 @@ module writeback_stage(
         
 reg wb_valid;
 wire wb_ready_go;
-wire wb_to_regf_valid;
+
 
 assign wb_ready_go = 1'b1;
 assign wb_allowin = !wb_valid || wb_ready_go;
-assign wb_to_regf_valid = wb_valid && wb_ready_go;
 
 always @ (posedge clk) begin
     if (rst) begin
