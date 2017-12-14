@@ -17,7 +17,7 @@ module fetch_stage(
     // data passing from the PC calculate module
     input  wire        IRWrite,
     // For Stall
-    input  wire [31:0] PC_next,
+ //   input  wire [31:0] PC_next,
     input  wire        PC_AdEL,
     // interaction with inst_sram
     input  wire        PC_abnormal,
@@ -38,7 +38,7 @@ module fetch_stage(
     output             fetch_axi_rready ,
     input              fetch_axi_rvalid ,
     input       [31:0] fetch_axi_rdata  ,
-    input       [ 2:0] fetch_axi_rid    ,
+    input       [ 3:0] fetch_axi_rid    ,
 
     input              fetch_axi_arready,
 //    output             fetch_axi_arvalid,

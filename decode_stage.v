@@ -109,7 +109,7 @@ module decode_stage(
     output               decode_stage_valid
   );
 
-    reg decode_valid;
+    reg  decode_valid;
     wire decode_ready_go;
 
     assign decode_ready_go = !ID_EXE_Stall;
@@ -173,9 +173,9 @@ module decode_stage(
     wire [ 3:0]          Exc_vec_ID;
 
     // Bypassed regdata
-    reg  [ 2:0]       nop_count;
+ //   reg  [ 2:0]       nop_count;
 
-    wire [ 4:0]       rs,rt,sa,rd;
+    wire [ 4:0]  rs,rt,sa,rd;
 
     wire [31:0]  ID_EXE_data;
     wire [31:0] EXE_MEM_data;
@@ -218,7 +218,7 @@ module decode_stage(
 
     always @ (posedge clk) begin
         if (rst) begin
-            {       nop_count,
+            {  
                  MemEn_ID_EXE,  MemToReg_ID_EXE,     ALUop_ID_EXE, RegWrite_ID_EXE, 
               MemWrite_ID_EXE,   ALUSrcA_ID_EXE,   ALUSrcB_ID_EXE,     MULT_ID_EXE, 
                    DIV_ID_EXE,      MFHL_ID_EXE,      MTHL_ID_EXE,       LB_ID_EXE,
@@ -273,156 +273,7 @@ module decode_stage(
             end
         end
     end
-/*
 
-
-
-
-
-
-
-    always @(posedge clk) begin
-      if (rst) begin
-        {       nop_count,
-             MemEn_ID_EXE,  MemToReg_ID_EXE,     ALUop_ID_EXE, RegWrite_ID_EXE, 
-          MemWrite_ID_EXE,   ALUSrcA_ID_EXE,   ALUSrcB_ID_EXE,     MULT_ID_EXE, 
-               DIV_ID_EXE,      MFHL_ID_EXE,      MTHL_ID_EXE,       LB_ID_EXE,
-               LBU_ID_EXE,        LH_ID_EXE,       LHU_ID_EXE,       LW_ID_EXE, 
-                SW_ID_EXE,        SB_ID_EXE,        SH_ID_EXE,     mfc0_ID_EXE,
-          RegWaddr_ID_EXE,        Sa_ID_EXE,        PC_ID_EXE, PC_add_4_ID_EXE, 
-         RegRdata1_ID_EXE, RegRdata2_ID_EXE, SgnExtend_ID_EXE,  ZExtend_ID_EXE, 
-         is_signed_ID_EXE,       DSI_ID_EXE,   Exc_vec_ID_EXE,     eret_ID_EXE,
-                Rd_ID_EXE, cp0_Write_ID_EXE
-        } <= 'd0;
-       end
-       else if (ex_int_handle_ID || eret_ID_EXE || (nop_count != 3'd0)) begin
-          if(nop_count == 3'd1)
-              nop_count <= 3'd0;
-          else begin
-              nop_count <= nop_count+3'd1;
-          end
-          {
-               MemEn_ID_EXE,  MemToReg_ID_EXE,     ALUop_ID_EXE, RegWrite_ID_EXE, 
-            MemWrite_ID_EXE,   ALUSrcA_ID_EXE,   ALUSrcB_ID_EXE,     MULT_ID_EXE, 
-                 DIV_ID_EXE,      MFHL_ID_EXE,      MTHL_ID_EXE,       LB_ID_EXE,
-                 LBU_ID_EXE,        LH_ID_EXE,       LHU_ID_EXE,       LW_ID_EXE, 
-                  SW_ID_EXE,        SB_ID_EXE,        SH_ID_EXE,     mfc0_ID_EXE,
-            RegWaddr_ID_EXE,        Sa_ID_EXE,       // PC_ID_EXE, PC_add_4_ID_EXE, 
-           RegRdata1_ID_EXE, RegRdata2_ID_EXE, SgnExtend_ID_EXE,  ZExtend_ID_EXE, 
-           is_signed_ID_EXE,       DSI_ID_EXE,   Exc_vec_ID_EXE,     eret_ID_EXE,
-                  Rd_ID_EXE, cp0_Write_ID_EXE,       DSI_ID_EXE
-          } <= 'd0;
-          PC_ID_EXE  <=           PC_IF_ID;
-          PC_add_4_ID_EXE  <=     PC_add_4_IF_ID;
-       end
-       else if (~ID_EXE_Stall) begin
-          // control signals passing to EXE stage
-            MemEn_ID_EXE  <=           MemEn_ID;
-         MemToReg_ID_EXE  <=        MemToReg_ID;
-            ALUop_ID_EXE  <=           ALUop_ID;
-         RegWrite_ID_EXE  <=        RegWrite_ID;
-         MemWrite_ID_EXE  <=        MemWrite_ID;
-          ALUSrcA_ID_EXE  <=         ALUSrcA_ID;
-          ALUSrcB_ID_EXE  <=         ALUSrcB_ID;
-             MULT_ID_EXE  <=            MULT_ID;
-              DIV_ID_EXE  <=             DIV_ID;
-             MFHL_ID_EXE  <=            MFHL_ID;
-             MTHL_ID_EXE  <=            MTHL_ID;
-               LB_ID_EXE  <=              LB_ID;
-              LBU_ID_EXE  <=             LBU_ID;
-               LH_ID_EXE  <=              LH_ID;
-              LHU_ID_EXE  <=             LHU_ID;
-               LW_ID_EXE  <=              LW_ID;
-               SW_ID_EXE  <=              SW_ID;
-               SB_ID_EXE  <=              SB_ID;
-               SH_ID_EXE  <=              SH_ID;
-             mfc0_ID_EXE  <=            mfc0_ID;
-        is_signed_ID_EXE  <=       is_signed_ID;
-          Exc_vec_ID_EXE  <=         Exc_vec_ID;
-        cp0_Write_ID_EXE  <=          cp0_Write;
-              // delay slot 
-              DSI_ID_EXE  <=          DSI_IF_ID;
-             eret_ID_EXE  <=            eret_ID;
-        // data transfering to EXE stage
-               Rd_ID_EXE  <=                 rd;
-         RegWaddr_ID_EXE  <=        RegWaddr_ID;
-               Sa_ID_EXE  <=              Sa_ID;
-               PC_ID_EXE  <=           PC_IF_ID;
-         PC_add_4_ID_EXE  <=     PC_add_4_IF_ID;
-        RegRdata1_ID_EXE  <= RegRdata1_Final_ID;
-        RegRdata2_ID_EXE  <= RegRdata2_Final_ID;
-        SgnExtend_ID_EXE  <=       SgnExtend_ID;
-          ZExtend_ID_EXE  <=         ZExtend_ID;
-        // cp0Rdata_ID_EXE  <=        cp0Rdata_ID;
-      end
-      else if (~(|DIV_ID_EXE)) begin
-        {    MemEn_ID_EXE,  MemToReg_ID_EXE,      ALUop_ID_EXE, RegWrite_ID_EXE, 
-          MemWrite_ID_EXE,   ALUSrcA_ID_EXE,    ALUSrcB_ID_EXE,     MULT_ID_EXE,     
-               DIV_ID_EXE,      MFHL_ID_EXE,       MTHL_ID_EXE,       LB_ID_EXE, //control
-               LBU_ID_EXE,        LH_ID_EXE,        LHU_ID_EXE,       LW_ID_EXE, 
-                SW_ID_EXE,        SB_ID_EXE,         SH_ID_EXE,     mfc0_ID_EXE,            
-          RegWaddr_ID_EXE,        Sa_ID_EXE,         PC_ID_EXE, PC_add_4_ID_EXE, 
-         RegRdata1_ID_EXE, RegRdata2_ID_EXE,  SgnExtend_ID_EXE,  ZExtend_ID_EXE, 
-         is_signed_ID_EXE,       DSI_ID_EXE,    Exc_vec_ID_EXE,     eret_ID_EXE,
-                Rd_ID_EXE, cp0_Write_ID_EXE
-        } <= 'd0;
-      end
-      else if (~DIV_Complete) begin
-        {   MemEn_ID_EXE,   MemToReg_ID_EXE,     ALUop_ID_EXE,  RegWrite_ID_EXE,
-         MemWrite_ID_EXE,    ALUSrcA_ID_EXE,   ALUSrcB_ID_EXE,      MULT_ID_EXE,
-             MFHL_ID_EXE,       MTHL_ID_EXE,        LB_ID_EXE,       LBU_ID_EXE, //control
-               LH_ID_EXE,        LHU_ID_EXE,        LW_ID_EXE,        SW_ID_EXE, 
-               SB_ID_EXE,         SH_ID_EXE,      mfc0_ID_EXE,  RegWaddr_ID_EXE, 
-               Sa_ID_EXE,         PC_ID_EXE,  PC_add_4_ID_EXE, SgnExtend_ID_EXE, 
-          ZExtend_ID_EXE,  is_signed_ID_EXE,       DSI_ID_EXE,   Exc_vec_ID_EXE,
-             eret_ID_EXE,         Rd_ID_EXE, cp0_Write_ID_EXE
-        } <= 'd0;  
-
-              DIV_ID_EXE <=       DIV_ID_EXE;
-        RegRdata1_ID_EXE <= RegRdata1_ID_EXE;
-        RegRdata2_ID_EXE <= RegRdata2_ID_EXE;
-      end
-      else begin
-           MemEn_ID_EXE   <=             MemEn_ID;
-        MemToReg_ID_EXE   <=          MemToReg_ID;
-           ALUop_ID_EXE   <=             ALUop_ID;
-        RegWrite_ID_EXE   <=          RegWrite_ID;
-        MemWrite_ID_EXE   <=          MemWrite_ID;
-         ALUSrcA_ID_EXE   <=           ALUSrcA_ID;
-         ALUSrcB_ID_EXE   <=           ALUSrcB_ID;
-            MULT_ID_EXE   <=              MULT_ID;
-             DIV_ID_EXE   <=               DIV_ID;
-            MFHL_ID_EXE   <=              MFHL_ID;
-            MTHL_ID_EXE   <=              MTHL_ID;
-              LB_ID_EXE   <=                LB_ID;
-             LBU_ID_EXE   <=               LBU_ID;
-              LH_ID_EXE   <=                LH_ID;
-             LHU_ID_EXE   <=               LHU_ID;
-              LW_ID_EXE   <=                LW_ID;
-              SW_ID_EXE   <=                SW_ID;
-              SB_ID_EXE   <=                SB_ID;
-              SH_ID_EXE   <=                SH_ID;
-            mfc0_ID_EXE   <=              mfc0_ID;
-       is_signed_ID_EXE   <=         is_signed_ID;
-         Exc_vec_ID_EXE   <=           Exc_vec_ID;
-        // delay slot 
-       cp0_Write_ID_EXE   <=            cp0_Write;
-             DSI_ID_EXE   <=            DSI_IF_ID;  // DSI_ID is 
-            eret_ID_EXE   <=              eret_ID;
-        // data transfering to EXE stage
-               Rd_ID_EXE  <=                 rd;
-         RegWaddr_ID_EXE  <=          RegWaddr_ID;
-               Sa_ID_EXE  <=                Sa_ID;
-               PC_ID_EXE  <=             PC_IF_ID;
-         PC_add_4_ID_EXE  <=       PC_add_4_IF_ID;
-        RegRdata1_ID_EXE  <=   RegRdata1_Final_ID;
-        RegRdata2_ID_EXE  <=   RegRdata2_Final_ID;
-        SgnExtend_ID_EXE  <=         SgnExtend_ID;
-          ZExtend_ID_EXE  <=           ZExtend_ID;
-        // cp0Rdata_ID_EXE  <=          cp0Rdata_ID;
-      end
-    end // always region end here
-*/
     Branch_Cond Branch_Cond(
         .A           ( RegRdata1_Final_ID),
         .B           ( RegRdata2_Final_ID),
@@ -528,11 +379,3 @@ module Branch_Cond(
 
 endmodule // Branch_Cond
 
-
-/*
-    Adder Branch_addr_Adder(
-        .A         (      PC_add_4_ID),
-        .B         ( SgnExtend_LF2_ID),
-        .Result    (     Br_target_ID)
-    );
- */

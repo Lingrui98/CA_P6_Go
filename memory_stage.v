@@ -316,13 +316,7 @@ module memory_stage(
     end
 
     always @ (posedge clk) begin
-        //写响应返回，则拉低对应表项的有效位
-        if (bvalid&&bready) begin
-            if (bid==4'd0) do_waddr_r[0] <= 33'd0;
-            if (bid==4'd1) do_waddr_r[1] <= 33'd0;
-            if (bid==4'd2) do_waddr_r[2] <= 33'd0;
-            if (bid==4'd3) do_waddr_r[3] <= 33'd0;
-        end
+        
     end
 
     always @ (posedge clk) begin
@@ -340,21 +334,47 @@ module memory_stage(
         else
         if (data_w_req_pos) begin
             if (write_id_n==4'd0) begin
+                if (bvalid&&bready) begin
+                    if (bid==4'd1) do_waddr_r[1] <= 33'd0;
+                    if (bid==4'd2) do_waddr_r[2] <= 33'd0;
+                    if (bid==4'd3) do_waddr_r[3] <= 33'd0;
+                end   
                 do_waddr_r[0] <= {1'b1,mem_axi_awaddr};
                 do_dsize_r[0] <= mem_axi_awsize;
             end
             if (write_id_n==4'd1) begin
+                if (bvalid&&bready) begin
+                    if (bid==4'd0) do_waddr_r[0] <= 33'd0;
+                    if (bid==4'd2) do_waddr_r[2] <= 33'd0;
+                    if (bid==4'd3) do_waddr_r[3] <= 33'd0;
+                end
                 do_waddr_r[1] <= {1'b1,mem_axi_awaddr};
                 do_dsize_r[1] <= mem_axi_awsize;
             end
             if (write_id_n==4'd2) begin
+                if (bvalid&&bready) begin
+                    if (bid==4'd0) do_waddr_r[0] <= 33'd0;
+                    if (bid==4'd1) do_waddr_r[1] <= 33'd0;
+                    if (bid==4'd3) do_waddr_r[3] <= 33'd0;
+                end
                 do_waddr_r[2] <= {1'b1,mem_axi_awaddr};
                 do_dsize_r[2] <= mem_axi_awsize;
             end
             if (write_id_n==4'd3) begin
+                if (bvalid&&bready) begin
+                    if (bid==4'd0) do_waddr_r[0] <= 33'd0;
+                    if (bid==4'd1) do_waddr_r[1] <= 33'd0;
+                    if (bid==4'd2) do_waddr_r[2] <= 33'd0;
+                end
                 do_waddr_r[3] <= {1'b1,mem_axi_awaddr};
                 do_dsize_r[3] <= mem_axi_awsize;
             end
+        end
+        else if (bvalid&&bready) begin
+            if (bid==4'd0) do_waddr_r[0] <= 33'd0;
+            if (bid==4'd1) do_waddr_r[1] <= 33'd0;
+            if (bid==4'd2) do_waddr_r[2] <= 33'd0;
+            if (bid==4'd3) do_waddr_r[3] <= 33'd0;            
         end
     end
 

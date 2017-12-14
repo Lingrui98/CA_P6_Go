@@ -206,9 +206,9 @@ wire [31:0] HI_out           ;
 wire [31:0] LO_out           ;
 // HILO IO
 
-wire [31:0] CP0Raddr         ;
+wire [ 4:0] CP0Raddr         ;
 wire [31:0] CP0Rdata         ;
-wire [31:0] CP0Waddr         ;
+wire [ 4:0] CP0Waddr         ;
 wire [31:0] CP0Wdata         ;
 wire        CP0Write         ;
 wire [31:0]      epc         ;
@@ -260,7 +260,7 @@ wire [31:0] mem_axi_araddr   ;
 wire [ 2:0] mem_axi_arsize   ;                 
 wire        mem_axi_arready  ;                 
 wire        mem_axi_arvalid  ;                 
-wire [31:0] mem_axi_awid     ;                 
+wire [ 3:0] mem_axi_awid     ;                 
 wire [31:0] mem_axi_awaddr   ;                 
 wire [ 2:0] mem_axi_awsize   ;                 
 wire        mem_axi_awvalid  ;                 
@@ -871,7 +871,7 @@ always @ (posedge clk) begin
             else if (do_req_raddr) begin
                 do_r_req <= 2'd3;
             end
-            else if (arvalid_r&&data_r_req!=2'd2&&!IR_buffer_valid) begin
+            else if (arvalid_r&&(data_r_req!=2'd2||data_r_req!=2'd1)&&!IR_buffer_valid&&!ID_EXE_Stall) begin
                 do_r_req <= 2'd2;
             end
         end
@@ -892,7 +892,7 @@ end
 
 assign do_r_req_pos[0] = 1'b0;
 assign do_r_req_pos[1] = do_r_req==2'd0 && first_fetch;
-assign do_r_req_pos[2] = do_r_req==2'd0 && arvalid_r&&data_r_req!=2'd2;
+assign do_r_req_pos[2] = do_r_req==2'd0 && !ID_EXE_Stall && arvalid_r&&(data_r_req!=2'd2||data_r_req!=2'd1)&&!IR_buffer_valid;
 assign do_r_req_pos[3] = do_r_req==2'd0 && do_req_raddr;
 
 

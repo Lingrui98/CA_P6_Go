@@ -87,7 +87,7 @@ module execute_stage(
     output reg  [31:0]  cp0Rdata_EXE_MEM,
     output reg              mfc0_EXE_MEM,
 
-    output      [31:0]     cp0_Write_EXE,
+    output                 cp0_Write_EXE,
     output wire [31:0]      Exc_BadVaddr,   
     output wire [31:0]      Exc_EPC ,
     output wire             Exc_BD,
